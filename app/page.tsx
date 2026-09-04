@@ -18,6 +18,7 @@ import {
   Settings,
   ShieldCheck,
   Store as StoreIcon,
+  Trash2,
   UploadCloud,
   Users,
 } from 'lucide-react';
@@ -25,6 +26,17 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -275,6 +287,30 @@ export default function HomePage() {
         };
       },
     });
+    register({
+      name: 'delete_menu',
+      title: 'PDFメニューを削除',
+      description:
+        '指定したPDFメニューを削除し、すべての店舗画面から非表示にします。',
+      inputSchema: {
+        type: 'object',
+        properties: { menuId: { type: 'string', minLength: 1 } },
+        required: ['menuId'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      execute(input: unknown) {
+        const value = input as { menuId?: string };
+        const target = menus.find((menu) => menu.id === value.menuId);
+        if (!target) throw new Error('削除するメニューが見つかりません');
+        setMenus((current) =>
+          current.filter((menu) => menu.id !== value.menuId),
+        );
+        setActiveId((current) => (current === value.menuId ? '' : current));
+        setScreen('admin-list');
+        return { id: target.id, title: target.title, deleted: true };
+      },
+    });
     return () => lifecycle.abort();
   }, [menus]);
   const activeMenu = menus.find((menu) => menu.id === activeId);
@@ -356,6 +392,10 @@ export default function HomePage() {
           onEdit={(id) => {
             setActiveId(id);
             setScreen('admin-new');
+          }}
+          onDelete={(id) => {
+            setMenus((current) => current.filter((menu) => menu.id !== id));
+            if (activeId === id) setActiveId('');
           }}
         />
       )}
@@ -549,11 +589,14 @@ function AdminPdfList({
   menus,
   onNew,
   onEdit,
+  onDelete,
 }: {
   menus: MenuPdf[];
   onNew: () => void;
   onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
+  const [deleteTarget, setDeleteTarget] = useState<MenuPdf | null>(null);
   return (
     <main className="min-h-svh p-6 lg:p-10">
       <div className="mx-auto max-w-6xl">
@@ -639,21 +682,62 @@ function AdminPdfList({
                     {formatDate(menu.updatedAt)}
                   </TableCell>
                   <TableCell className="pr-6 text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="rounded-lg"
-                      onClick={() => onEdit(menu.id)}
-                    >
-                      <Pencil />
-                      配信先を編集
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-lg"
+                        onClick={() => onEdit(menu.id)}
+                      >
+                        <Pencil />
+                        配信先を編集
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        aria-label={`${menu.title}を削除`}
+                        className="rounded-lg text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+                        onClick={() => setDeleteTarget(menu)}
+                      >
+                        <Trash2 />
+                        削除
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </section>
+        <AlertDialog
+          open={Boolean(deleteTarget)}
+          onOpenChange={(open) => !open && setDeleteTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogMedia className="bg-red-50 text-red-600">
+                <Trash2 />
+              </AlertDialogMedia>
+              <AlertDialogTitle>このPDFを削除しますか？</AlertDialogTitle>
+              <AlertDialogDescription>
+                「{deleteTarget?.title}
+                」は、公開中のすべての店舗画面から削除されます。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>キャンセル</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 text-white hover:bg-red-700"
+                onClick={() => {
+                  if (deleteTarget) onDelete(deleteTarget.id);
+                  setDeleteTarget(null);
+                }}
+              >
+                削除する
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </main>
   );
