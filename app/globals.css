@@ -309,11 +309,13 @@
   min-height: 0;
   display: grid;
   place-items: center;
-  overflow: auto;
-  padding: 28px;
-  background: #292824;
-  touch-action: pan-y pinch-zoom;
-  overscroll-behavior: contain;
+  overflow: hidden;
+  padding: 20px;
+  background: #191714;
+  touch-action: none;
+  overscroll-behavior: none;
+  position: relative;
+  user-select: none;
 }
 .viewer-controls {
   display: grid;
@@ -358,16 +360,15 @@
   min-height: 100%;
   min-width: 100%;
   place-items: center;
+  pointer-events: none;
 }
 .pdf-canvas {
   display: block;
   width: auto;
   max-width: none;
   background: #fff;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
-  transition:
-    height 0.2s ease,
-    opacity 0.15s ease;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  pointer-events: none;
 }
 .pdf-status {
   position: absolute;
@@ -375,16 +376,16 @@
   top: 50%;
   transform: translate(-50%, -50%);
   border-radius: 14px;
-  background: rgba(17, 15, 12, 0.78);
+  background: rgba(17, 15, 12, 0.88);
   padding: 14px 20px;
   color: #e4d8c1;
   font-size: 14px;
   backdrop-filter: blur(8px);
+  pointer-events: none;
 }
 .viewer-pdf-only .viewer-stage {
   padding: 0;
-  background: #151411;
-  cursor: pointer;
+  background: #12110e;
 }
 .viewer-pdf-only .mock-paper {
   width: min(70vh, 95vw);
@@ -394,11 +395,146 @@
   width: min(62vh, 560px);
   aspect-ratio: 0.707;
   transform-origin: center;
-  transition: transform 0.2s ease;
   background: #f7f1e6;
   color: #2d271f;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
 }
+
+/* ========================================= */
+/* リアルな本めくり (Book Flip & Page Curl)  */
+/* ========================================= */
+.book-turn-viewport {
+  perspective: 2400px;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: visible;
+}
+
+.book-turn-stage {
+  position: relative;
+  transform-style: preserve-3d;
+  will-change: transform, filter;
+  display: grid;
+  place-items: center;
+}
+
+/* 次のページへめくる（右端がめくれ上がり左へ倒れる） */
+.book-anim-next {
+  animation: bookTurnNext 0.52s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+  transform-origin: left center;
+}
+
+/* 前のページへめくる（左端がめくれ上がり右へ倒れる） */
+.book-anim-prev {
+  animation: bookTurnPrev 0.52s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+  transform-origin: right center;
+}
+
+@keyframes bookTurnNext {
+  0% {
+    transform: rotateY(0deg) scale(1);
+    filter: drop-shadow(0 15px 30px rgba(0, 0, 0, 0.4));
+  }
+  35% {
+    transform: rotateY(-38deg) skewY(-2.5deg) scale(0.96) translateZ(20px);
+    filter: drop-shadow(-35px 25px 50px rgba(0, 0, 0, 0.65));
+  }
+  70% {
+    transform: rotateY(-65deg) skewY(-1deg) scale(0.98) translateZ(10px);
+    filter: drop-shadow(-50px 15px 60px rgba(0, 0, 0, 0.5));
+  }
+  100% {
+    transform: rotateY(0deg) scale(1);
+    filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.45));
+  }
+}
+
+@keyframes bookTurnPrev {
+  0% {
+    transform: rotateY(0deg) scale(1);
+    filter: drop-shadow(0 15px 30px rgba(0, 0, 0, 0.4));
+  }
+  35% {
+    transform: rotateY(38deg) skewY(2.5deg) scale(0.96) translateZ(20px);
+    filter: drop-shadow(35px 25px 50px rgba(0, 0, 0, 0.65));
+  }
+  70% {
+    transform: rotateY(65deg) skewY(1deg) scale(0.98) translateZ(10px);
+    filter: drop-shadow(50px 15px 60px rgba(0, 0, 0, 0.5));
+  }
+  100% {
+    transform: rotateY(0deg) scale(1);
+    filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.45));
+  }
+}
+
+/* めくり時の光沢・シャドウオーバーレイ */
+.book-turn-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  border-radius: 4px;
+}
+
+.book-anim-next .book-turn-overlay {
+  animation: bookOverlayNext 0.52s ease forwards;
+}
+
+.book-anim-prev .book-turn-overlay {
+  animation: bookOverlayPrev 0.52s ease forwards;
+}
+
+@keyframes bookOverlayNext {
+  0% {
+    opacity: 0;
+    background: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.5) 100%);
+  }
+  35% {
+    opacity: 0.9;
+    background: linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.5) 0%,
+      rgba(255, 255, 255, 0.25) 35%,
+      rgba(0, 0, 0, 0.6) 80%
+    );
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bookOverlayPrev {
+  0% {
+    opacity: 0;
+    background: linear-gradient(to left, transparent 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.5) 100%);
+  }
+  35% {
+    opacity: 0.9;
+    background: linear-gradient(
+      to left,
+      rgba(0, 0, 0, 0.5) 0%,
+      rgba(255, 255, 255, 0.25) 35%,
+      rgba(0, 0, 0, 0.6) 80%
+    );
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.viewer-pannable {
+  cursor: grab !important;
+}
+
+.viewer-panning {
+  cursor: grabbing !important;
+}
+
 .paper-frame {
   height: 92%;
   margin: 4%;
