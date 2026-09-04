@@ -26,7 +26,6 @@ import {
   UploadCloud,
   Users,
 } from 'lucide-react';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -1703,7 +1702,7 @@ function PdfCanvas({
       try {
         setStatus('loading');
         const pdfjs = await import('pdfjs-dist');
-        pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '5.4.149'}/build/pdf.worker.min.mjs`;
 
         // Base64またはURLからArrayBufferを取得
         const bytes = new Uint8Array(await (await fetch(fileUrl)).arrayBuffer());
