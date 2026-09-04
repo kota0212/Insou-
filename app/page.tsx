@@ -1074,7 +1074,7 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(100);
   const [total, setTotal] = useState(menu.fileUrl ? 1 : 2);
-  const [chromeVisible, setChromeVisible] = useState(true);
+  const [chromeVisible, setChromeVisible] = useState(false);
   const pointerStartX = useRef<number | null>(null);
   const swiped = useRef(false);
   const movePage = (direction: -1 | 1) =>
