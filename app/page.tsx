@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Building2,
@@ -9,6 +9,7 @@ import {
   FilePlus2,
   FileText,
   Home,
+  EyeOff,
   LogOut,
   Maximize2,
   Minus,
@@ -20,6 +21,7 @@ import {
   UploadCloud,
   Users,
 } from 'lucide-react';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -458,6 +460,12 @@ function AdminShell({
   onLogout: () => void;
   children: React.ReactNode;
 }) {
+  const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(''), 2200);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const items = [
     { label: 'ホーム', icon: Home },
     { label: 'PDF一覧', icon: FileText, screen: 'admin-list' as Screen },
@@ -490,7 +498,11 @@ function AdminShell({
                   <SidebarMenuItem key={item.label}>
                     <SidebarMenuButton
                       isActive={Boolean(item.screen && current === item.screen)}
-                      onClick={() => item.screen && onNavigate(item.screen)}
+                      onClick={() =>
+                        item.screen
+                          ? onNavigate(item.screen)
+                          : setNotice(`${item.label}は未実装の機能です`)
+                      }
                       className="h-11 rounded-xl px-3 text-sm data-[active=true]:bg-blue-50 data-[active=true]:font-semibold data-[active=true]:text-blue-700"
                     >
                       <item.icon />
@@ -521,6 +533,14 @@ function AdminShell({
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="min-w-0 bg-[#f5f7fb]">{children}</SidebarInset>
+      {notice && (
+        <div
+          role="status"
+          className="fixed inset-x-0 bottom-8 z-50 mx-auto w-fit max-w-[calc(100%-32px)] rounded-2xl border border-white/20 bg-slate-950/75 px-6 py-4 text-center text-sm font-semibold text-white shadow-2xl backdrop-blur-md"
+        >
+          {notice}
+        </div>
+      )}
     </SidebarProvider>
   );
 }
@@ -1053,91 +1073,210 @@ function StoreMenuList({
 function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(100);
-  const total = 2;
-  const url = useMemo(
-    () =>
-      menu.fileUrl
-        ? `${menu.fileUrl}#page=${page}&zoom=${zoom}&toolbar=0&navpanes=0`
-        : '',
-    [menu.fileUrl, page, zoom],
-  );
+  const [total, setTotal] = useState(menu.fileUrl ? 1 : 2);
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const pointerStartX = useRef<number | null>(null);
+  const swiped = useRef(false);
+  const movePage = (direction: -1 | 1) =>
+    setPage((current) => Math.min(total, Math.max(1, current + direction)));
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    pointerStartX.current = event.clientX;
+    swiped.current = false;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pointerStartX.current === null) return;
+    const distance = event.clientX - pointerStartX.current;
+    if (Math.abs(distance) >= 48) {
+      swiped.current = true;
+      movePage(distance < 0 ? 1 : -1);
+    }
+    pointerStartX.current = null;
+  };
   return (
-    <main className="viewer-surface">
-      <header className="viewer-header">
-        <button
-          onClick={onBack}
-          className="flex h-12 items-center gap-2 rounded-xl px-3 text-[#e7dcc9] hover:bg-white/5"
-        >
-          <ArrowLeft />
-          一覧に戻る
-        </button>
-        <h1 className="absolute left-1/2 max-w-[45%] -translate-x-1/2 truncate font-serif text-lg text-white sm:text-xl">
-          {menu.title}
-        </h1>
-        <span className="rounded-lg border border-[#504633] px-3 py-2 text-sm text-[#cdbd9f]">
-          {page} / {menu.fileUrl ? '—' : total}
-        </span>
-      </header>
-      <div className="viewer-stage">
+    <main
+      className={`viewer-surface ${chromeVisible ? '' : 'viewer-pdf-only'}`}
+    >
+      {chromeVisible && (
+        <header className="viewer-header">
+          <button
+            onClick={onBack}
+            className="flex h-12 items-center gap-2 rounded-xl px-3 text-[#e7dcc9] hover:bg-white/5"
+          >
+            <ArrowLeft />
+            一覧に戻る
+          </button>
+          <h1 className="absolute left-1/2 max-w-[45%] -translate-x-1/2 truncate font-serif text-lg text-white sm:text-xl">
+            {menu.title}
+          </h1>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setChromeVisible(false)}
+              className="rounded-xl border-[#504633] bg-transparent text-[#e7dcc9] hover:bg-white/5 hover:text-white"
+            >
+              <EyeOff />
+              <span className="hidden sm:inline">PDFのみ表示</span>
+            </Button>
+            <span className="rounded-lg border border-[#504633] px-3 py-2 text-sm text-[#cdbd9f]">
+              {page} / {total}
+            </span>
+          </div>
+        </header>
+      )}
+      <div
+        className="viewer-stage"
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onClick={() => {
+          if (!chromeVisible && !swiped.current) setChromeVisible(true);
+          swiped.current = false;
+        }}
+      >
         {menu.fileUrl ? (
-          <iframe
-            key={url}
-            title={menu.title}
-            src={url}
-            className="h-full w-full border-0 bg-white"
+          <PdfCanvas
+            fileUrl={menu.fileUrl}
+            page={page}
+            zoom={zoom}
+            onLoaded={setTotal}
           />
         ) : (
           <MockPdfPage menu={menu} page={page} zoom={zoom} />
         )}
       </div>
-      <footer className="viewer-controls">
-        <Button
-          disabled={page === 1 || Boolean(menu.fileUrl)}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-          className="viewer-nav"
-        >
-          <ChevronLeft />
-          前のページ
-        </Button>
-        <div className="flex items-center justify-center gap-2">
+      {chromeVisible && (
+        <footer className="viewer-controls">
           <Button
-            aria-label="縮小"
-            variant="outline"
-            onClick={() => setZoom((z) => Math.max(70, z - 10))}
-            className="viewer-tool"
+            disabled={page === 1}
+            onClick={() => movePage(-1)}
+            className="viewer-nav"
           >
-            <Minus />
+            <ChevronLeft />
+            前のページ
           </Button>
-          <span className="w-14 text-center text-sm text-[#cdbd9f]">
-            {zoom}%
-          </span>
+          <div className="flex items-center justify-center gap-2">
+            <Button
+              aria-label="縮小"
+              variant="outline"
+              onClick={() => setZoom((z) => Math.max(70, z - 10))}
+              className="viewer-tool"
+            >
+              <Minus />
+            </Button>
+            <span className="w-14 text-center text-sm text-[#cdbd9f]">
+              {zoom}%
+            </span>
+            <Button
+              aria-label="拡大"
+              variant="outline"
+              onClick={() => setZoom((z) => Math.min(150, z + 10))}
+              className="viewer-tool"
+            >
+              <Plus />
+            </Button>
+            <Button
+              aria-label="画面に合わせる"
+              variant="outline"
+              onClick={() => setZoom(100)}
+              className="viewer-tool hidden sm:inline-flex"
+            >
+              <Maximize2 />
+            </Button>
+          </div>
           <Button
-            aria-label="拡大"
-            variant="outline"
-            onClick={() => setZoom((z) => Math.min(150, z + 10))}
-            className="viewer-tool"
+            disabled={page === total}
+            onClick={() => movePage(1)}
+            className="viewer-nav"
           >
-            <Plus />
+            次のページ
+            <ChevronRight />
           </Button>
-          <Button
-            aria-label="画面に合わせる"
-            variant="outline"
-            onClick={() => setZoom(100)}
-            className="viewer-tool hidden sm:inline-flex"
-          >
-            <Maximize2 />
-          </Button>
-        </div>
-        <Button
-          disabled={page === total || Boolean(menu.fileUrl)}
-          onClick={() => setPage((p) => Math.min(total, p + 1))}
-          className="viewer-nav"
-        >
-          次のページ
-          <ChevronRight />
-        </Button>
-      </footer>
+        </footer>
+      )}
     </main>
+  );
+}
+
+function PdfCanvas({
+  fileUrl,
+  page,
+  zoom,
+  onLoaded,
+}: {
+  fileUrl: string;
+  page: number;
+  zoom: number;
+  onLoaded: (pages: number) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(
+    'loading',
+  );
+  useEffect(() => {
+    let cancelled = false;
+    let renderTask:
+      | { cancel: () => void; promise: Promise<unknown> }
+      | undefined;
+    let documentTask: { destroy: () => Promise<void> } | undefined;
+    const render = async () => {
+      try {
+        setStatus('loading');
+        const pdfjs = await import('pdfjs-dist');
+        pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        const bytes = new Uint8Array(
+          await (await fetch(fileUrl)).arrayBuffer(),
+        );
+        const loadingTask = pdfjs.getDocument({ data: bytes });
+        const pdf = await loadingTask.promise;
+        documentTask = pdf;
+        if (cancelled) return;
+        onLoaded(pdf.numPages);
+        const pdfPage = await pdf.getPage(Math.min(page, pdf.numPages));
+        const viewport = pdfPage.getViewport({ scale: 2 });
+        const canvas = canvasRef.current;
+        const context = canvas?.getContext('2d');
+        if (!canvas || !context || cancelled) return;
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        renderTask = pdfPage.render({
+          canvas,
+          canvasContext: context,
+          viewport,
+        });
+        await renderTask.promise;
+        if (!cancelled) setStatus('ready');
+      } catch (error) {
+        if (
+          !cancelled &&
+          !(
+            error instanceof Error &&
+            error.name === 'RenderingCancelledException'
+          )
+        )
+          setStatus('error');
+      }
+    };
+    void render();
+    return () => {
+      cancelled = true;
+      renderTask?.cancel();
+      void documentTask?.destroy();
+    };
+  }, [fileUrl, page, onLoaded]);
+  return (
+    <div className="pdf-canvas-wrap">
+      <canvas
+        ref={canvasRef}
+        className={`pdf-canvas ${status === 'ready' ? 'opacity-100' : 'opacity-0'}`}
+        style={{ height: `${zoom}%` }}
+      />
+      {status === 'loading' && (
+        <p className="pdf-status">PDFを表示しています...</p>
+      )}
+      {status === 'error' && (
+        <p className="pdf-status">PDFを表示できませんでした</p>
+      )}
+    </div>
   );
 }
 function MockPdfPage({
