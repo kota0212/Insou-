@@ -123,9 +123,21 @@ const initialMenus: MenuPdf[] = [
     fileUrl: '',
     createdAt: '2026-08-25',
     updatedAt: '2026-08-31',
-    storeIds: initialStores.map((s) => s.id),
+    storeIds: ['kyoto-b', 'sannomiya'],
   },
 ];
+
+const normalizeSingleMenuPerStore = (items: MenuPdf[]) => {
+  const assigned = new Set<string>();
+  return items.map((menu) => ({
+    ...menu,
+    storeIds: menu.storeIds.filter((storeId) => {
+      if (assigned.has(storeId)) return false;
+      assigned.add(storeId);
+      return true;
+    }),
+  }));
+};
 
 const formatDate = (date: string) =>
   new Intl.DateTimeFormat('ja-JP', {
@@ -154,7 +166,10 @@ export default function HomePage() {
         if (Array.isArray(parsed) && parsed.length > 0) setStores(parsed);
       }
       const savedMenus = localStorage.getItem('insou-menus');
-      if (savedMenus) setMenus(JSON.parse(savedMenus));
+      if (savedMenus) {
+        const parsed = JSON.parse(savedMenus);
+        if (Array.isArray(parsed)) setMenus(normalizeSingleMenuPerStore(parsed));
+      }
       const savedStore = localStorage.getItem('insou-store');
       if (savedStore) setStoreId(savedStore);
     } catch {}
@@ -244,7 +259,14 @@ export default function HomePage() {
           try {
             localStorage.setItem('insou-store', selectedId);
           } catch {}
-          setScreen('store-list');
+          const assigned = menus.find((menu) => menu.storeIds.includes(selectedId));
+          if (assigned) {
+            setActiveId(assigned.id);
+            setReturnScreen('login');
+            setScreen('viewer');
+          } else {
+            setScreen('store-list');
+          }
         }}
         onAdminLogin={() => setScreen('admin-list')}
       />
@@ -286,8 +308,10 @@ export default function HomePage() {
         if (next === 'admin-new') setActiveId('');
         setScreen(next);
       }}
-      onStore={() => setScreen('login')}
-      onLogout={() => setScreen('login')}
+      onLogout={() => {
+        setActiveId('');
+        setScreen('login');
+      }}
     >
       {screen === 'admin-new' ? (
         <NewPdfForm
@@ -298,11 +322,16 @@ export default function HomePage() {
             setScreen('admin-list');
           }}
           onSave={(menu) => {
-            setMenus((current) =>
-              current.some((item) => item.id === menu.id)
-                ? current.map((item) => (item.id === menu.id ? menu : item))
-                : [menu, ...current],
-            );
+            setMenus((current) => {
+              const cleared = current.map((item) =>
+                item.id === menu.id
+                  ? item
+                  : { ...item, storeIds: item.storeIds.filter((id) => !menu.storeIds.includes(id)) },
+              );
+              return cleared.some((item) => item.id === menu.id)
+                ? cleared.map((item) => (item.id === menu.id ? menu : item))
+                : [menu, ...cleared];
+            });
             setActiveId('');
             setScreen('admin-list');
           }}
@@ -603,19 +632,16 @@ function UnifiedLogin({
 function AdminShell({
   current,
   onNavigate,
-  onStore,
   onLogout,
   children,
 }: {
   current: Screen;
   onNavigate: (s: Screen) => void;
-  onStore: () => void;
   onLogout: () => void;
   children: React.ReactNode;
 }) {
   const items = [
     { label: 'PDF配信一覧', icon: FileText, screen: 'admin-list' as Screen },
-    { label: '新しいPDFを登録', icon: FilePlus2, screen: 'admin-new' as Screen },
     { label: '店舗一覧・管理', icon: Building2, screen: 'admin-stores' as Screen },
   ];
 
@@ -654,16 +680,8 @@ function AdminShell({
         </SidebarContent>
 
         <SidebarFooter className="gap-3 border-t border-slate-100 p-4">
-          <Button
-            variant="outline"
-            className="h-10 w-full justify-start rounded-xl text-slate-700 hover:text-slate-900"
-            onClick={onStore}
-          >
-            <StoreIcon className="mr-2 size-4 text-amber-600" />
-            ログイン画面へ戻る
-          </Button>
           <button
-            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-500 hover:text-slate-900"
+            className="flex h-10 w-full items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
             onClick={onLogout}
           >
             <LogOut className="size-4" />
@@ -1417,8 +1435,9 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(100);
   const [total, setTotal] = useState(menu.fileUrl ? 1 : 2);
-  const [chromeVisible, setChromeVisible] = useState(false);
+  const [chromeVisible, setChromeVisible] = useState(true);
   const [turnAnim, setTurnAnim] = useState<'next' | 'prev' | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
 
   // 拡大時のパン（平行移動）状態
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -1438,6 +1457,7 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
 
   // ページ送り処理（本めくりエフェクト付き）
   const movePage = (direction: -1 | 1) => {
+    if (turnAnim) return;
     const nextPage = page + direction;
     if (nextPage < 1 || nextPage > total) return;
 
@@ -1451,6 +1471,7 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
 
     const endTimer = setTimeout(() => {
       setTurnAnim(null);
+      setSwipeOffset(0);
     }, 530);
 
     return () => {
@@ -1488,6 +1509,9 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
       const nextX = Math.max(-limitX, Math.min(limitX, initialPanRef.current.x + deltaX));
       const nextY = Math.max(-limitY, Math.min(limitY, initialPanRef.current.y + deltaY));
       setPan({ x: nextX, y: nextY });
+    } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      const allowed = (deltaX < 0 && page < total) || (deltaX > 0 && page > 1);
+      setSwipeOffset(allowed ? Math.max(-120, Math.min(120, deltaX)) : deltaX * 0.15);
     }
   };
 
@@ -1510,6 +1534,7 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
     }
 
     dragStartRef.current = null;
+    if (!turnAnim) setSwipeOffset(0);
   };
 
   // マウスホイール / トラックパッドのスクロールによるパン移動
@@ -1586,6 +1611,14 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
         onWheel={onWheel}
         onDoubleClick={handleDoubleClick}
       >
+        <button
+          aria-label="前のページ"
+          disabled={page === 1 || Boolean(turnAnim)}
+          onClick={(event) => { event.stopPropagation(); movePage(-1); }}
+          className="viewer-edge-nav viewer-edge-prev"
+        >
+          <ChevronLeft /><span>前へ</span>
+        </button>
         <div className="book-turn-viewport">
           <div
             className={`book-turn-stage ${
@@ -1599,7 +1632,9 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
               transform:
                 zoom > 100
                   ? `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom / 100})`
-                  : undefined,
+                  : swipeOffset
+                    ? `translate3d(${swipeOffset}px, 0, 0) rotateY(${swipeOffset / 18}deg)`
+                    : undefined,
               transition: isPanning ? 'none' : 'transform 0.12s ease-out',
             }}
           >
@@ -1615,12 +1650,20 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
             )}
           </div>
         </div>
+        <button
+          aria-label="次のページ"
+          disabled={page === total || Boolean(turnAnim)}
+          onClick={(event) => { event.stopPropagation(); movePage(1); }}
+          className="viewer-edge-nav viewer-edge-next"
+        >
+          <span>次へ</span><ChevronRight />
+        </button>
       </div>
 
       {chromeVisible && (
         <footer className="viewer-controls z-30">
           <Button
-            disabled={page === 1}
+            disabled={page === 1 || Boolean(turnAnim)}
             onClick={() => movePage(-1)}
             className="viewer-nav"
           >
@@ -1634,7 +1677,7 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
               variant="outline"
               onClick={() => setZoom((z) => Math.max(100, z - 20))}
               className="viewer-tool"
-              title="縮小"
+              title="PDFを縮小"
             >
               <Minus />
             </Button>
@@ -1646,26 +1689,26 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
               variant="outline"
               onClick={() => setZoom((z) => Math.min(260, z + 20))}
               className="viewer-tool"
-              title="拡大"
+              title="PDFを拡大"
             >
               <Plus />
             </Button>
             <Button
-              aria-label="100%リセット"
+              aria-label="表示をリセット"
               variant="outline"
               onClick={() => {
                 setZoom(100);
                 setPan({ x: 0, y: 0 });
               }}
               className="viewer-tool"
-              title="100%（標準サイズ）に戻す"
+              title="倍率と表示位置をリセット"
             >
               <RotateCcw className="size-4" />
             </Button>
           </div>
 
           <Button
-            disabled={page === total}
+            disabled={page === total || Boolean(turnAnim)}
             onClick={() => movePage(1)}
             className="viewer-nav"
           >
@@ -1811,4 +1854,3 @@ function MockPdfPage({
     </div>
   );
 }
-

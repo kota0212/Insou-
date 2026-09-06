@@ -317,6 +317,37 @@
   position: relative;
   user-select: none;
 }
+.viewer-edge-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 56px;
+  padding: 0 14px;
+  border: 1px solid rgba(215, 184, 126, 0.45);
+  border-radius: 999px;
+  background: rgba(20, 17, 12, 0.88);
+  color: #f0dfbe;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  transform: translateY(-50%);
+  transition: opacity 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+.viewer-edge-prev { left: 16px; }
+.viewer-edge-next { right: 16px; }
+.viewer-edge-nav:hover:not(:disabled) {
+  background: #b79659;
+  color: #17130d;
+  transform: translateY(-50%) scale(1.04);
+}
+.viewer-edge-nav:disabled {
+  opacity: 0.22;
+  cursor: not-allowed;
+}
 .viewer-controls {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -535,6 +566,23 @@
   cursor: grabbing !important;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .book-anim-next,
+  .book-anim-prev {
+    animation: reducedPageTurn 0.2s ease-out forwards;
+  }
+  .book-anim-next .book-turn-overlay,
+  .book-anim-prev .book-turn-overlay {
+    animation: none;
+  }
+}
+
+@keyframes reducedPageTurn {
+  0% { opacity: 1; }
+  50% { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+
 .paper-frame {
   height: 92%;
   margin: 4%;
@@ -619,6 +667,13 @@
   .viewer-controls {
     grid-template-columns: auto 1fr auto;
   }
+  .viewer-edge-nav {
+    min-height: 48px;
+    padding: 0 10px;
+  }
+  .viewer-edge-nav span { display: none; }
+  .viewer-edge-prev { left: 8px; }
+  .viewer-edge-next { right: 8px; }
   .mock-paper {
     width: min(78vw, 52vh);
   }
