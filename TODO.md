@@ -32,3 +32,13 @@
 - [x] 本番ビルド成功
 - [ ] Sitesへ新しいバージョンを保存
 - [ ] 一般公開サイトへデプロイ
+
+## MVP Google Apps Script (GAS) 移行
+
+- [x] localStorage主保存先の廃止とGoogle Apps Script Web App API連携
+- [x] 1店舗1メニュー制限の撤廃（店舗ごとに複数PDFを閲覧可能）
+- [x] gas/Code.gs, gas/appsscript.json の作成（Spreadsheet・Drive連携）
+- [x] Drive File ID / URLのクライアント非公開化とPDF遅延ロード
+- [x] API URL（NEXT_PUBLIC_GAS_WEB_APP_URL）状態表示（未設定・通信中・空・エラー）
+- [x] ハリボテ認証仕様のコードおよび画面・README上での明確化
+- [x] MVP専用のGoogle Drive PDF保存フォルダを新規作成する初期化処理
