@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import {
   ArrowLeft,
   Building2,
@@ -1456,7 +1456,7 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
   }, [zoom]);
 
   // ページ送り処理（本めくりエフェクト付き）
-  const movePage = (direction: -1 | 1) => {
+  const movePage = useCallback((direction: -1 | 1) => {
     if (turnAnim) return;
     const nextPage = page + direction;
     if (nextPage < 1 || nextPage > total) return;
@@ -1478,7 +1478,56 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
       clearTimeout(switchTimer);
       clearTimeout(endTimer);
     };
-  };
+  }, [page, total, turnAnim]);
+
+  // キーボードショートカット操作
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // input, textarea, select, contenteditable フォーカス中は無効
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      // Cmd, Ctrl, Alt 押下時はブラウザショートカットを優先
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        if (page > 1 && !turnAnim) {
+          movePage(-1);
+        }
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        if (page < total && !turnAnim) {
+          movePage(1);
+        }
+      } else if (event.key === '+' || event.key === '=') {
+        event.preventDefault();
+        setZoom((z) => Math.min(260, z + 20));
+      } else if (event.key === '-') {
+        event.preventDefault();
+        setZoom((z) => Math.max(100, z - 20));
+      } else if (event.key === '0') {
+        event.preventDefault();
+        setZoom(100);
+        setPan({ x: 0, y: 0 });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [movePage, page, total, turnAnim]);
 
   // ポインター押下（マウス / タッチ開始）
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -1666,51 +1715,71 @@ function PdfViewer({ menu, onBack }: { menu: MenuPdf; onBack: () => void }) {
             disabled={page === 1 || Boolean(turnAnim)}
             onClick={() => movePage(-1)}
             className="viewer-nav"
+            title="前のページを捲る (←)"
           >
             <ChevronLeft />
             前のページを捲る
           </Button>
 
-          <div className="flex items-center justify-center gap-2">
-            <Button
-              aria-label="縮小"
-              variant="outline"
-              onClick={() => setZoom((z) => Math.max(100, z - 20))}
-              className="viewer-tool"
-              title="PDFを縮小"
-            >
-              <Minus />
-            </Button>
-            <span className="w-14 text-center text-sm font-semibold text-[#cdbd9f]">
-              {zoom}%
-            </span>
-            <Button
-              aria-label="拡大"
-              variant="outline"
-              onClick={() => setZoom((z) => Math.min(260, z + 20))}
-              className="viewer-tool"
-              title="PDFを拡大"
-            >
-              <Plus />
-            </Button>
-            <Button
-              aria-label="表示をリセット"
-              variant="outline"
-              onClick={() => {
-                setZoom(100);
-                setPan({ x: 0, y: 0 });
-              }}
-              className="viewer-tool"
-              title="倍率と表示位置をリセット"
-            >
-              <RotateCcw className="size-4" />
-            </Button>
+          <div className="flex flex-col items-center justify-center gap-1.5">
+            <div className="flex items-center justify-center gap-2">
+              <Button
+                aria-label="縮小"
+                variant="outline"
+                onClick={() => setZoom((z) => Math.max(100, z - 20))}
+                className="viewer-tool"
+                title="PDFを縮小 (-)"
+              >
+                <Minus />
+              </Button>
+              <span className="w-14 text-center text-sm font-semibold text-[#cdbd9f]">
+                {zoom}%
+              </span>
+              <Button
+                aria-label="拡大"
+                variant="outline"
+                onClick={() => setZoom((z) => Math.min(260, z + 20))}
+                className="viewer-tool"
+                title="PDFを拡大 (+/=)"
+              >
+                <Plus />
+              </Button>
+              <Button
+                aria-label="表示をリセット"
+                variant="outline"
+                onClick={() => {
+                  setZoom(100);
+                  setPan({ x: 0, y: 0 });
+                }}
+                className="viewer-tool"
+                title="倍率と表示位置をリセット (0)"
+              >
+                <RotateCcw className="size-4" />
+              </Button>
+            </div>
+            <div className="hidden select-none items-center gap-3 text-[11px] text-[#8e8271] sm:flex">
+              <span className="flex items-center gap-1">
+                <kbd className="rounded border border-[#3b3327] bg-[#1f1b14] px-1 py-0.5 font-mono text-[10px] text-[#cdbd9f]">←</kbd>
+                <kbd className="rounded border border-[#3b3327] bg-[#1f1b14] px-1 py-0.5 font-mono text-[10px] text-[#cdbd9f]">→</kbd>
+                <span>移動</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="rounded border border-[#3b3327] bg-[#1f1b14] px-1 py-0.5 font-mono text-[10px] text-[#cdbd9f]">+</kbd>
+                <kbd className="rounded border border-[#3b3327] bg-[#1f1b14] px-1 py-0.5 font-mono text-[10px] text-[#cdbd9f]">-</kbd>
+                <span>ズーム</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="rounded border border-[#3b3327] bg-[#1f1b14] px-1 py-0.5 font-mono text-[10px] text-[#cdbd9f]">0</kbd>
+                <span>リセット</span>
+              </span>
+            </div>
           </div>
 
           <Button
             disabled={page === total || Boolean(turnAnim)}
             onClick={() => movePage(1)}
             className="viewer-nav"
+            title="次のページを捲る (→)"
           >
             次のページを捲る
             <ChevronRight />
