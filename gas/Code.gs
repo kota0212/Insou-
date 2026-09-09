@@ -16,7 +16,7 @@ const SCRIPT_PROPS = PropertiesService.getScriptProperties();
 // スクリプトプロパティのキー名
 const PROP_KEYS = {
   SPREADSHEET_ID: 'SPREADSHEET_ID', // 連携スプレッドシートID（未設定時は新規作成）
-  PDF_FOLDER_ID: 'PDF_FOLDER_ID',   // PDF保存先Google DriveフォルダID（未設定時は自動作成）
+  PDF_FOLDER_ID: 'PDF_FOLDER_ID', // PDF保存先Google DriveフォルダID（未設定時は自動作成）
 };
 
 // シート名
@@ -90,12 +90,18 @@ function doPost(e) {
     try {
       payload = JSON.parse(e.postData.contents);
     } catch (parseErr) {
-      return createErrorResponse('JSONのパースに失敗しました: ' + parseErr.message, 400);
+      return createErrorResponse(
+        'JSONのパースに失敗しました: ' + parseErr.message,
+        400,
+      );
     }
 
     const action = payload.action;
     if (!action) {
-      return createErrorResponse('アクション (action) が指定されていません', 400);
+      return createErrorResponse(
+        'アクション (action) が指定されていません',
+        400,
+      );
     }
 
     switch (action) {
@@ -118,7 +124,10 @@ function doPost(e) {
         return handleInitDatabase();
 
       default:
-        return createErrorResponse(`未対応のPOSTアクションです: ${action}`, 400);
+        return createErrorResponse(
+          `未対応のPOSTアクションです: ${action}`,
+          400,
+        );
     }
   } catch (error) {
     return createErrorResponse(error.message || String(error), 500);
@@ -141,7 +150,7 @@ function createErrorResponse(errorMessage, statusCode = 400) {
       success: false,
       error: errorMessage,
       statusCode: statusCode,
-    })
+    }),
   );
   output.setMimeType(ContentService.MimeType.JSON);
   return output;
@@ -167,11 +176,15 @@ function getSpreadsheet() {
   const timestamp = Utilities.formatDate(
     new Date(),
     Session.getScriptTimeZone() || 'Asia/Tokyo',
-    'yyyyMMdd_HHmmss'
+    'yyyyMMdd_HHmmss',
   );
-  const spreadsheet = SpreadsheetApp.create('INSOU_Menu_Master_MVP_' + timestamp);
+  const spreadsheet = SpreadsheetApp.create(
+    'INSOU_Menu_Master_MVP_' + timestamp,
+  );
   SCRIPT_PROPS.setProperty(PROP_KEYS.SPREADSHEET_ID, spreadsheet.getId());
-  Logger.log('MVP用スプレッドシートを新規作成しました: ' + spreadsheet.getUrl());
+  Logger.log(
+    'MVP用スプレッドシートを新規作成しました: ' + spreadsheet.getUrl(),
+  );
   return spreadsheet;
 }
 
@@ -197,7 +210,15 @@ function initializeSheetHeader(sheet, sheetName) {
       sheet.appendRow(['id', 'code', 'name', 'area', 'createdAt', 'updatedAt']);
       break;
     case SHEET_NAMES.MENUS:
-      sheet.appendRow(['id', 'title', 'driveFileId', 'fileName', 'fileSize', 'createdAt', 'updatedAt']);
+      sheet.appendRow([
+        'id',
+        'title',
+        'driveFileId',
+        'fileName',
+        'fileSize',
+        'createdAt',
+        'updatedAt',
+      ]);
       break;
     case SHEET_NAMES.MENU_STORES:
       sheet.appendRow(['menuId', 'storeId', 'createdAt']);
@@ -214,7 +235,7 @@ function createNewPdfStorageFolder() {
   const timestamp = Utilities.formatDate(
     new Date(),
     Session.getScriptTimeZone() || 'Asia/Tokyo',
-    'yyyyMMdd_HHmmss'
+    'yyyyMMdd_HHmmss',
   );
   const folderName = 'INSOU_Menu_PDFs_MVP_' + timestamp;
   const folder = DriveApp.createFolder(folderName);
@@ -238,7 +259,10 @@ function getPdfFolder() {
     try {
       return DriveApp.getFolderById(folderId);
     } catch (e) {
-      Logger.log('設定済みフォルダを参照できないため、新しい保存先を作成します: ' + e.message);
+      Logger.log(
+        '設定済みフォルダを参照できないため、新しい保存先を作成します: ' +
+          e.message,
+      );
     }
   }
 
@@ -377,7 +401,11 @@ function getMenuStoreMapping() {
 function formatDateValue(val) {
   if (!val) return new Date().toISOString().slice(0, 10);
   if (val instanceof Date) {
-    return Utilities.formatDate(val, Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy-MM-dd');
+    return Utilities.formatDate(
+      val,
+      Session.getScriptTimeZone() || 'Asia/Tokyo',
+      'yyyy-MM-dd',
+    );
   }
   return String(val).slice(0, 10);
 }
@@ -413,7 +441,10 @@ function handleGetPdf(menuId) {
   }
 
   if (!driveFileId) {
-    return createErrorResponse(`指定されたメニューID (${menuId}) のPDFファイルが見つかりません`, 404);
+    return createErrorResponse(
+      `指定されたメニューID (${menuId}) のPDFファイルが見つかりません`,
+      404,
+    );
   }
 
   try {
@@ -423,7 +454,10 @@ function handleGetPdf(menuId) {
 
     // MIMEタイプ検証
     if (contentType !== 'application/pdf') {
-      return createErrorResponse('保存されているファイルは有効なPDFではありません', 500);
+      return createErrorResponse(
+        '保存されているファイルは有効なPDFではありません',
+        500,
+      );
     }
 
     const base64Data = Utilities.base64Encode(blob.getBytes());
@@ -438,7 +472,10 @@ function handleGetPdf(menuId) {
       },
     });
   } catch (err) {
-    return createErrorResponse(`Google DriveからのPDF読み込みに失敗しました: ${err.message}`, 500);
+    return createErrorResponse(
+      `Google DriveからのPDF読み込みに失敗しました: ${err.message}`,
+      500,
+    );
   }
 }
 
@@ -460,7 +497,10 @@ function handleCreateMenu(payload) {
     return createErrorResponse('メニュータイトルを入力してください', 400);
   }
   if (!storeIds || storeIds.length === 0) {
-    return createErrorResponse('公開対象の店舗を少なくとも1店舗選択してください', 400);
+    return createErrorResponse(
+      '公開対象の店舗を少なくとも1店舗選択してください',
+      400,
+    );
   }
   if (!pdfBase64) {
     return createErrorResponse('PDFファイルが指定されていません', 400);
@@ -478,11 +518,23 @@ function handleCreateMenu(payload) {
   const fileSize = file.getSize();
 
   const menuId = 'menu-' + Utilities.getUuid().slice(0, 8);
-  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy-MM-dd');
+  const now = Utilities.formatDate(
+    new Date(),
+    Session.getScriptTimeZone() || 'Asia/Tokyo',
+    'yyyy-MM-dd',
+  );
 
   // メニューシートへ追加
   const menuSheet = getOrCreateSheet(SHEET_NAMES.MENUS);
-  menuSheet.appendRow([menuId, title, driveFileId, fileName, fileSize, now, now]);
+  menuSheet.appendRow([
+    menuId,
+    title,
+    driveFileId,
+    fileName,
+    fileSize,
+    now,
+    now,
+  ]);
 
   // 店舗割当シートへ追加（1店舗1メニュー制限撤廃: 複数店舗をそのまま登録）
   saveMenuStoreAssignments(menuId, storeIds);
@@ -517,7 +569,10 @@ function handleUpdateMenu(payload) {
     return createErrorResponse('メニュータイトルを入力してください', 400);
   }
   if (!storeIds || storeIds.length === 0) {
-    return createErrorResponse('公開対象の店舗を少なくとも1店舗選択してください', 400);
+    return createErrorResponse(
+      '公開対象の店舗を少なくとも1店舗選択してください',
+      400,
+    );
   }
 
   const menuSheet = getOrCreateSheet(SHEET_NAMES.MENUS);
@@ -547,7 +602,10 @@ function handleUpdateMenu(payload) {
   }
 
   if (rowIndex === -1) {
-    return createErrorResponse(`更新対象のメニュー (${menuId}) が見つかりません`, 404);
+    return createErrorResponse(
+      `更新対象のメニュー (${menuId}) が見つかりません`,
+      404,
+    );
   }
 
   let finalDriveId = currentDriveId;
@@ -556,7 +614,10 @@ function handleUpdateMenu(payload) {
 
   // 新しいPDFがアップロードされている場合
   if (pdfBase64) {
-    const validation = validateAndExtractPdf(pdfBase64, fileName || currentFileName || 'updated_menu.pdf');
+    const validation = validateAndExtractPdf(
+      pdfBase64,
+      fileName || currentFileName || 'updated_menu.pdf',
+    );
     if (!validation.success) {
       return createErrorResponse(validation.error, 400);
     }
@@ -566,7 +627,9 @@ function handleUpdateMenu(payload) {
       try {
         DriveApp.getFileById(currentDriveId).setTrashed(true);
       } catch (trashErr) {
-        Logger.log('旧ファイルの削除（ゴミ箱移動）スキップ: ' + trashErr.message);
+        Logger.log(
+          '旧ファイルの削除（ゴミ箱移動）スキップ: ' + trashErr.message,
+        );
       }
     }
 
@@ -577,7 +640,11 @@ function handleUpdateMenu(payload) {
     finalFileSize = newFile.getSize();
   }
 
-  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy-MM-dd');
+  const today = Utilities.formatDate(
+    new Date(),
+    Session.getScriptTimeZone() || 'Asia/Tokyo',
+    'yyyy-MM-dd',
+  );
 
   // スプレッドシート更新
   menuSheet.getRange(rowIndex, titleIdx + 1).setValue(title);
@@ -629,7 +696,10 @@ function handleDeleteMenu(payload) {
   }
 
   if (rowIndex === -1) {
-    return createErrorResponse(`削除対象のメニュー (${menuId}) が見つかりません`, 404);
+    return createErrorResponse(
+      `削除対象のメニュー (${menuId}) が見つかりません`,
+      404,
+    );
   }
 
   // スプレッドシートから行削除
@@ -661,14 +731,18 @@ function handleCreateStore(payload) {
   const name = (payload.name || '').trim();
   const code = (payload.code || '').trim().toUpperCase();
   const area = (payload.area || '大阪').trim();
-  const id = payload.id || ('store-' + Date.now());
+  const id = payload.id || 'store-' + Date.now();
 
   if (!name) {
     return createErrorResponse('店舗名を入力してください', 400);
   }
 
   const sheet = getOrCreateSheet(SHEET_NAMES.STORES);
-  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy-MM-dd');
+  const now = Utilities.formatDate(
+    new Date(),
+    Session.getScriptTimeZone() || 'Asia/Tokyo',
+    'yyyy-MM-dd',
+  );
   sheet.appendRow([id, code, name, area, now, now]);
 
   return createJsonResponse({
@@ -724,16 +798,26 @@ function saveMenuStoreAssignments(menuId, storeIds) {
   const sheet = getOrCreateSheet(SHEET_NAMES.MENU_STORES);
   const rows = sheet.getDataRange().getValues();
   const menuIdIdx = rows[0].indexOf('menuId');
+  const storeIdIdx = rows[0].indexOf('storeId');
+  const targetStoreIds = storeIds.map(String);
 
-  // 既存の割当を逆順で削除
+  // このメニューの旧割当と、対象店舗に紐づく他メニューを削除する。
+  // 店舗端末はログイン直後に1件だけ開くため、1店舗1メニューを保証する。
   for (let i = rows.length - 1; i >= 1; i--) {
-    if (String(rows[i][menuIdIdx]) === String(menuId)) {
+    if (
+      String(rows[i][menuIdIdx]) === String(menuId) ||
+      targetStoreIds.indexOf(String(rows[i][storeIdIdx])) !== -1
+    ) {
       sheet.deleteRow(i + 1);
     }
   }
 
   // 新規割当を追加
-  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy-MM-dd');
+  const now = Utilities.formatDate(
+    new Date(),
+    Session.getScriptTimeZone() || 'Asia/Tokyo',
+    'yyyy-MM-dd',
+  );
   for (let i = 0; i < storeIds.length; i++) {
     sheet.appendRow([menuId, storeIds[i], now]);
   }
@@ -766,8 +850,14 @@ function validateAndExtractPdf(base64String, fileName) {
       const meta = parts[0];
       cleanBase64 = parts[1];
 
-      if (meta.indexOf('application/pdf') === -1 && meta.indexOf('pdf') === -1) {
-        return { success: false, error: 'アップロードされたファイルはPDF形式ではありません' };
+      if (
+        meta.indexOf('application/pdf') === -1 &&
+        meta.indexOf('pdf') === -1
+      ) {
+        return {
+          success: false,
+          error: 'アップロードされたファイルはPDF形式ではありません',
+        };
       }
     }
 
@@ -787,15 +877,26 @@ function validateAndExtractPdf(base64String, fileName) {
       decodedBytes[0] !== 0x25 || // '%'
       decodedBytes[1] !== 0x50 || // 'P'
       decodedBytes[2] !== 0x44 || // 'D'
-      decodedBytes[3] !== 0x46    // 'F'
+      decodedBytes[3] !== 0x46 // 'F'
     ) {
-      return { success: false, error: '有効なPDFファイル構造ではありません (%PDF ヘッダが見つかりません)' };
+      return {
+        success: false,
+        error:
+          '有効なPDFファイル構造ではありません (%PDF ヘッダが見つかりません)',
+      };
     }
 
-    const blob = Utilities.newBlob(decodedBytes, mimeType, fileName || 'menu.pdf');
+    const blob = Utilities.newBlob(
+      decodedBytes,
+      mimeType,
+      fileName || 'menu.pdf',
+    );
     return { success: true, blob: blob };
   } catch (err) {
-    return { success: false, error: 'PDFのデコード・検証に失敗しました: ' + err.message };
+    return {
+      success: false,
+      error: 'PDFのデコード・検証に失敗しました: ' + err.message,
+    };
   }
 }
 
@@ -830,8 +931,14 @@ function handleInitDatabase() {
     ['sannomiya', 'SN-01', '三宮店', '神戸'],
   ];
 
-  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy-MM-dd');
-  initialStores.forEach(s => storeSheet.appendRow([s[0], s[1], s[2], s[3], now, now]));
+  const now = Utilities.formatDate(
+    new Date(),
+    Session.getScriptTimeZone() || 'Asia/Tokyo',
+    'yyyy-MM-dd',
+  );
+  initialStores.forEach((s) =>
+    storeSheet.appendRow([s[0], s[1], s[2], s[3], now, now]),
+  );
 
   // 2. メニューシート
   let menuSheet = ss.getSheetByName(SHEET_NAMES.MENUS);

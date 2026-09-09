@@ -10,17 +10,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  EyeOff,
   FilePlus2,
   FileText,
   Loader2,
   LogOut,
-  Minus,
-  Move,
   Pencil,
   Plus,
   RefreshCw,
-  RotateCcw,
   ShieldCheck,
   Store as StoreIcon,
   Trash2,
@@ -225,7 +221,8 @@ export default function HomePage() {
     register({
       name: 'list_store_menus',
       title: '店舗の公開メニューを確認',
-      description: '指定した店舗に現在公開されているPDFメニューを一覧で返します。',
+      description:
+        '指定した店舗に現在公開されているPDFメニューを一覧で返します。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -293,7 +290,9 @@ export default function HomePage() {
             title: menuData.title,
             storeIds: menuData.storeIds,
             fileName: menuData.fileName,
-            pdfBase64: menuData.fileUrl.startsWith('data:') ? menuData.fileUrl : undefined,
+            pdfBase64: menuData.fileUrl.startsWith('data:')
+              ? menuData.fileUrl
+              : undefined,
           });
           setMenus((prev) =>
             prev.map((m) =>
@@ -310,7 +309,10 @@ export default function HomePage() {
             fileName: menuData.fileName || 'menu.pdf',
             pdfBase64: menuData.fileUrl,
           });
-          setMenus((prev) => [{ ...created, fileUrl: menuData.fileUrl }, ...prev]);
+          setMenus((prev) => [
+            { ...created, fileUrl: menuData.fileUrl },
+            ...prev,
+          ]);
         }
       } else {
         // 未設定時のフォールバック更新
@@ -334,7 +336,9 @@ export default function HomePage() {
       setActiveId('');
       setScreen('admin-list');
     } catch (err) {
-      alert(`保存に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      alert(
+        `保存に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -350,7 +354,9 @@ export default function HomePage() {
       setMenus((prev) => prev.filter((m) => m.id !== id));
       if (activeId === id) setActiveId('');
     } catch (err) {
-      alert(`削除に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      alert(
+        `削除に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -367,7 +373,9 @@ export default function HomePage() {
         setStores((prev) => [...prev, newStore]);
       }
     } catch (err) {
-      alert(`店舗追加に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      alert(
+        `店舗追加に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -392,7 +400,9 @@ export default function HomePage() {
         setStoreId(remaining[0].id);
       }
     } catch (err) {
-      alert(`店舗削除に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      alert(
+        `店舗削除に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -406,8 +416,12 @@ export default function HomePage() {
       <div className="grid min-h-svh place-items-center bg-slate-50 text-slate-600">
         <div className="flex flex-col items-center gap-3 p-6 text-center">
           <Loader2 className="size-8 animate-spin text-blue-600" />
-          <p className="text-base font-bold text-slate-800">データを読み込んでいます...</p>
-          <p className="text-xs text-slate-500">Google Apps Script Web App API と通信中</p>
+          <p className="text-base font-bold text-slate-800">
+            データを読み込んでいます...
+          </p>
+          <p className="text-xs text-slate-500">
+            Google Apps Script Web App API と通信中
+          </p>
         </div>
       </div>
     );
@@ -419,14 +433,21 @@ export default function HomePage() {
       <div className="grid min-h-svh place-items-center bg-slate-50 p-6 text-slate-700">
         <div className="max-w-md w-full rounded-2xl border border-red-200 bg-white p-6 shadow-sm text-center">
           <AlertCircle className="mx-auto size-12 text-red-500 mb-3" />
-          <h2 className="text-lg font-bold text-slate-900 mb-1">API通信エラー</h2>
+          <h2 className="text-lg font-bold text-slate-900 mb-1">
+            API通信エラー
+          </h2>
           <p className="text-xs text-slate-600 mb-4">{errorMessage}</p>
           <p className="text-[11px] text-slate-500 mb-6 bg-slate-50 p-2.5 rounded-lg text-left">
-            ・NEXT_PUBLIC_GAS_WEB_APP_URL の設定を確認してください。<br />
-            ・GAS Web App の公開範囲が「全員 (Anyone)」になっているか確認してください。
+            ・NEXT_PUBLIC_GAS_WEB_APP_URL の設定を確認してください。
+            <br />
+            ・GAS Web App の公開範囲が「全員
+            (Anyone)」になっているか確認してください。
           </p>
           <div className="flex gap-2 justify-center">
-            <Button onClick={() => void loadData()} className="bg-blue-600 text-white font-bold">
+            <Button
+              onClick={() => void loadData()}
+              className="bg-blue-600 text-white font-bold"
+            >
               <RefreshCw className="mr-1.5 size-4" />
               再試行する
             </Button>
@@ -456,15 +477,22 @@ export default function HomePage() {
         onRetry={() => void loadData()}
         onStoreLogin={(selectedId) => {
           setStoreId(selectedId);
-          // MVP仕様: 1店舗1メニュー制限を撤廃し、自店舗向けPDF一覧画面へ遷移する
-          setScreen('store-list');
+          const assignedMenu = menus.find((menu) =>
+            menu.storeIds.includes(selectedId),
+          );
+          if (assignedMenu) {
+            void handleOpenViewer(assignedMenu.id, 'login');
+          } else {
+            // 未配信店舗のみ空状態を表示する。
+            setScreen('store-list');
+          }
         }}
         onAdminLogin={() => setScreen('admin-list')}
       />
     );
   }
 
-  // 2. 店舗側メニュー一覧画面（自店舗向け複数PDFの一覧表示）
+  // 2. 未配信店舗の空状態（配信済みの場合はログイン直後にビューアーへ遷移）
   if (screen === 'store-list') {
     return (
       <StoreMenuList
@@ -584,7 +612,10 @@ function GasStatusNotification({
         <div className="flex items-center gap-2">
           <AlertTriangle className="size-4 text-amber-600 shrink-0" />
           <span>
-            <strong>【API URL未設定】</strong> 現在 <code>NEXT_PUBLIC_GAS_WEB_APP_URL</code> が未設定のため、ローカルサンプルデータで動作しています。連携には <code>.env.local</code> にGAS Web App URLを設定してください。
+            <strong>【API URL未設定】</strong> 現在{' '}
+            <code>NEXT_PUBLIC_GAS_WEB_APP_URL</code>{' '}
+            が未設定のため、ローカルサンプルデータで動作しています。連携には{' '}
+            <code>.env.local</code> にGAS Web App URLを設定してください。
           </span>
         </div>
       </div>
@@ -597,7 +628,8 @@ function GasStatusNotification({
         <div className="flex items-center gap-2">
           <AlertCircle className="size-4 text-red-600 shrink-0" />
           <span>
-            <strong>【GAS通信エラー】</strong> {errorMessage || 'データの同期に失敗しました。'}
+            <strong>【GAS通信エラー】</strong>{' '}
+            {errorMessage || 'データの同期に失敗しました。'}
           </span>
         </div>
         {onRetry && (
@@ -676,14 +708,21 @@ function UnifiedLogin({
         {/* GAS API 状態表示 */}
         {apiStatus === 'unconfigured' && (
           <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/80 p-2.5 text-[11px] text-blue-900">
-            <strong>【GAS Web App URL未設定】</strong> <code>.env.local</code> に <code>NEXT_PUBLIC_GAS_WEB_APP_URL</code> を設定するとGoogle Apps Script連携が有効になります（現在はサンプルデータで表示中）。
+            <strong>【GAS Web App URL未設定】</strong> <code>.env.local</code>{' '}
+            に <code>NEXT_PUBLIC_GAS_WEB_APP_URL</code> を設定するとGoogle Apps
+            Script連携が有効になります（現在はサンプルデータで表示中）。
           </div>
         )}
         {apiStatus === 'error' && (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-2.5 text-[11px] text-red-900 flex items-center justify-between">
-            <span><strong>【APIエラー】</strong> {errorMessage}</span>
+            <span>
+              <strong>【APIエラー】</strong> {errorMessage}
+            </span>
             {onRetry && (
-              <button onClick={onRetry} className="font-bold text-red-700 underline">
+              <button
+                onClick={onRetry}
+                className="font-bold text-red-700 underline"
+              >
                 再試行
               </button>
             )}
@@ -735,7 +774,7 @@ function UnifiedLogin({
                 店舗端末モード
               </h1>
               <p className="mt-1 text-xs text-slate-500">
-                店舗コードとパスコードを入力して、自店舗メニュー一覧を開きます。
+                店舗コードとパスコードを入力して、割り当て済みメニューを開きます。
               </p>
             </div>
 
@@ -806,14 +845,15 @@ function UnifiedLogin({
                           : 'bg-white border-slate-200 text-slate-700 hover:border-amber-400'
                       }`}
                     >
-                      <span className="font-bold">{s.code || s.id}</span> ({s.name})
+                      <span className="font-bold">{s.code || s.id}</span> (
+                      {s.name})
                     </button>
                   ))}
                 </div>
               </div>
 
               <p className="text-[11px] text-amber-700 bg-amber-50/80 border border-amber-200/60 rounded-xl p-2.5">
-                ※MVPデモのため、入力済みのまま「店舗端末としてログイン」を押すだけで自店舗メニュー一覧へ入れます。
+                ※MVPデモのため、入力済みのまま「店舗端末としてログイン」を押すだけで割り当て済みメニューが開きます。
               </p>
 
               <Button
@@ -908,19 +948,28 @@ function AdminShell({
 }) {
   const items = [
     { label: 'PDF配信一覧', icon: FileText, screen: 'admin-list' as Screen },
-    { label: '店舗一覧・管理', icon: Building2, screen: 'admin-stores' as Screen },
+    {
+      label: '店舗一覧・管理',
+      icon: Building2,
+      screen: 'admin-stores' as Screen,
+    },
   ];
 
   return (
     <SidebarProvider>
-      <Sidebar collapsible="none" className="border-r border-slate-200 bg-white">
+      <Sidebar
+        collapsible="none"
+        className="border-r border-slate-200 bg-white"
+      >
         <SidebarHeader className="border-b border-slate-100 p-6">
           <div className="flex items-center gap-3">
             <BrandMark />
             <div>
               <p className="font-bold text-slate-900 tracking-wide">INSOU</p>
               <div className="flex items-center gap-1.5">
-                <p className="text-[11px] tracking-[.14em] text-slate-400">MENU CLOUD</p>
+                <p className="text-[11px] tracking-[.14em] text-slate-400">
+                  MENU CLOUD
+                </p>
                 <span className="rounded bg-slate-100 px-1 py-0.2 text-[9px] font-bold text-slate-600">
                   MVP
                 </span>
@@ -994,11 +1043,10 @@ function AdminStoreManagement({
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStoreName.trim() || isSubmitting) return;
-    const finalArea = isCustomArea
-      ? customArea.trim() || 'その他'
-      : newArea;
+    const finalArea = isCustomArea ? customArea.trim() || 'その他' : newArea;
     const id = `store-${Date.now()}`;
-    const code = newStoreCode.trim() || `ST-${String(stores.length + 1).padStart(2, '0')}`;
+    const code =
+      newStoreCode.trim() || `ST-${String(stores.length + 1).padStart(2, '0')}`;
     onAddStore({
       id,
       code: code.toUpperCase(),
@@ -1024,7 +1072,8 @@ function AdminStoreManagement({
                 店舗一覧・管理
               </h1>
               <p className="mt-2 text-slate-500">
-                Google Apps Script・Spreadsheetと同期し、メニューを配信する店舗を管理します。
+                Google Apps
+                Script・Spreadsheetと同期し、メニューを配信する店舗を管理します。
               </p>
             </div>
             <span className="rounded-full bg-blue-50 px-4 py-1.5 text-sm font-bold text-blue-700">
@@ -1074,7 +1123,11 @@ function AdminStoreManagement({
                 </label>
                 {!isCustomArea ? (
                   <div className="space-y-2">
-                    <Select value={newArea} onValueChange={(v) => setNewArea(v || '大阪')} disabled={isSubmitting}>
+                    <Select
+                      value={newArea}
+                      onValueChange={(v) => setNewArea(v || '大阪')}
+                      disabled={isSubmitting}
+                    >
                       <SelectTrigger className="rounded-xl bg-slate-50">
                         <SelectValue />
                       </SelectTrigger>
@@ -1153,11 +1206,21 @@ function AdminStoreManagement({
               <Table>
                 <TableHeader>
                   <TableRow className="bg-slate-50/80">
-                    <TableHead className="pl-6 text-xs text-slate-500">コード</TableHead>
-                    <TableHead className="text-xs text-slate-500">店舗名</TableHead>
-                    <TableHead className="text-xs text-slate-500">エリア</TableHead>
-                    <TableHead className="text-xs text-slate-500">配信中メニュー</TableHead>
-                    <TableHead className="pr-6 text-right text-xs text-slate-500">操作</TableHead>
+                    <TableHead className="pl-6 text-xs text-slate-500">
+                      コード
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-500">
+                      店舗名
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-500">
+                      エリア
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-500">
+                      配信中メニュー
+                    </TableHead>
+                    <TableHead className="pr-6 text-right text-xs text-slate-500">
+                      操作
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1216,7 +1279,9 @@ function AdminStoreManagement({
               <AlertDialogMedia className="bg-red-50 text-red-600">
                 <Trash2 />
               </AlertDialogMedia>
-              <AlertDialogTitle>「{deleteTarget?.name}」を削除しますか？</AlertDialogTitle>
+              <AlertDialogTitle>
+                「{deleteTarget?.name}」を削除しますか？
+              </AlertDialogTitle>
               <AlertDialogDescription>
                 店舗を削除すると、この店舗向けの配信設定もすべて解除されます。この操作は取り消せません。
               </AlertDialogDescription>
@@ -1296,18 +1361,32 @@ function AdminPdfList({
           {menus.length === 0 ? (
             <div className="p-12 text-center text-slate-500">
               <FileText className="mx-auto size-10 text-slate-400 mb-3" />
-              <p className="font-bold text-slate-700">登録されているメニューがありません</p>
-              <p className="text-xs text-slate-500 mt-1">「新しいPDFを登録」からPDFを追加してください。</p>
+              <p className="font-bold text-slate-700">
+                登録されているメニューがありません
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                「新しいPDFを登録」からPDFを追加してください。
+              </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50/80">
-                  <TableHead className="w-16 pl-6 text-xs text-slate-500">種類</TableHead>
-                  <TableHead className="text-xs text-slate-500">PDFメニュー名</TableHead>
-                  <TableHead className="text-xs text-slate-500">公開店舗数</TableHead>
-                  <TableHead className="text-xs text-slate-500">更新日</TableHead>
-                  <TableHead className="pr-6 text-right text-xs text-slate-500">操作</TableHead>
+                  <TableHead className="w-16 pl-6 text-xs text-slate-500">
+                    種類
+                  </TableHead>
+                  <TableHead className="text-xs text-slate-500">
+                    PDFメニュー名
+                  </TableHead>
+                  <TableHead className="text-xs text-slate-500">
+                    公開店舗数
+                  </TableHead>
+                  <TableHead className="text-xs text-slate-500">
+                    更新日
+                  </TableHead>
+                  <TableHead className="pr-6 text-right text-xs text-slate-500">
+                    操作
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1317,7 +1396,9 @@ function AdminPdfList({
                       <MenuThumb tone={index % 3} />
                     </TableCell>
                     <TableCell>
-                      <p className="font-semibold text-slate-900">{menu.title}</p>
+                      <p className="font-semibold text-slate-900">
+                        {menu.title}
+                      </p>
                       <p className="mt-0.5 text-xs text-slate-400">
                         {menu.fileName || 'PDFメニュー'}
                       </p>
@@ -1382,7 +1463,9 @@ function AdminPdfList({
               </AlertDialogMedia>
               <AlertDialogTitle>このPDFを削除しますか？</AlertDialogTitle>
               <AlertDialogDescription>
-                「{deleteTarget?.title}」は、公開中のすべての店舗画面から削除され、Google Drive上のファイルもゴミ箱へ移動されます。
+                「{deleteTarget?.title}
+                」は、公開中のすべての店舗画面から削除され、Google
+                Drive上のファイルもゴミ箱へ移動されます。
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -1404,7 +1487,13 @@ function AdminPdfList({
   );
 }
 
-function MenuThumb({ tone = 0, large = false }: { tone?: number; large?: boolean }) {
+function MenuThumb({
+  tone = 0,
+  large = false,
+}: {
+  tone?: number;
+  large?: boolean;
+}) {
   const tones = [
     'from-[#5d4625] to-[#2b2216] border-[#876738]',
     'from-[#47222b] to-[#251318] border-[#7f3f4e]',
@@ -1416,7 +1505,11 @@ function MenuThumb({ tone = 0, large = false }: { tone?: number; large?: boolean
         tones[tone]
       } ${large ? 'size-20 rounded-2xl' : 'size-12'}`}
     >
-      <FileText className={large ? 'size-9 text-amber-200/80' : 'size-5 text-amber-200/80'} />
+      <FileText
+        className={
+          large ? 'size-9 text-amber-200/80' : 'size-5 text-amber-200/80'
+        }
+      />
     </div>
   );
 }
@@ -1459,7 +1552,10 @@ function NewPdfForm({
 
   const chooseFile = (picked?: File) => {
     if (!picked) return;
-    if (picked.type !== 'application/pdf' && !picked.name.toLowerCase().endsWith('.pdf')) {
+    if (
+      picked.type !== 'application/pdf' &&
+      !picked.name.toLowerCase().endsWith('.pdf')
+    ) {
       alert('PDFファイルを選択してください。');
       return;
     }
@@ -1507,7 +1603,9 @@ function NewPdfForm({
         </button>
 
         <header className="mb-8">
-          <p className="mb-2 text-sm font-medium text-blue-600">コンテンツ管理</p>
+          <p className="mb-2 text-sm font-medium text-blue-600">
+            コンテンツ管理
+          </p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">
             {editing ? 'PDFの配信設定を編集' : '新しいPDFを登録'}
           </h1>
@@ -1526,7 +1624,9 @@ function NewPdfForm({
               </div>
               <div>
                 <p className="font-bold text-slate-950">PDF情報</p>
-                <p className="text-xs text-slate-500">メニューのタイトルとファイルを登録します</p>
+                <p className="text-xs text-slate-500">
+                  メニューのタイトルとファイルを登録します
+                </p>
               </div>
             </div>
 
@@ -1547,7 +1647,8 @@ function NewPdfForm({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  PDFファイル {!editing && <span className="ml-1 text-red-500">*</span>}
+                  PDFファイル{' '}
+                  {!editing && <span className="ml-1 text-red-500">*</span>}
                 </label>
                 <input
                   ref={inputRef}
@@ -1600,7 +1701,9 @@ function NewPdfForm({
                 </div>
                 <div>
                   <p className="font-bold text-slate-950">公開する店舗を選択</p>
-                  <p className="text-xs text-slate-500">選択したすべての店舗で、このPDFが閲覧可能になります</p>
+                  <p className="text-xs text-slate-500">
+                    選択したすべての店舗で、このPDFが閲覧可能になります
+                  </p>
                 </div>
               </div>
               <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
@@ -1622,8 +1725,13 @@ function NewPdfForm({
 
             <div className="grid gap-4 lg:grid-cols-3">
               {areas.map((area) => (
-                <fieldset key={area} className="rounded-xl border border-slate-200 p-4">
-                  <legend className="px-2 text-xs font-bold text-slate-700">{area}エリア</legend>
+                <fieldset
+                  key={area}
+                  className="rounded-xl border border-slate-200 p-4"
+                >
+                  <legend className="px-2 text-xs font-bold text-slate-700">
+                    {area}エリア
+                  </legend>
                   <div className="space-y-1.5 mt-1">
                     {stores
                       .filter((s) => s.area === area)
@@ -1664,7 +1772,12 @@ function NewPdfForm({
             </Button>
             <Button
               type="submit"
-              disabled={!title.trim() || selected.length === 0 || isSubmitting || (!editing && !fileUrl)}
+              disabled={
+                !title.trim() ||
+                selected.length === 0 ||
+                isSubmitting ||
+                (!editing && !fileUrl)
+              }
               className="h-11 rounded-xl bg-blue-600 px-8 font-bold text-white shadow-sm hover:bg-blue-700"
             >
               {isSubmitting ? (
@@ -1731,15 +1844,20 @@ function StoreMenuList({
       {/* GAS未設定バナー（店舗画面用） */}
       {apiStatus === 'unconfigured' && (
         <div className="bg-[#292318] border-b border-[#5a482b] px-4 py-2 text-center text-xs text-[#deb877]">
-          ※現在デモ用サンプルデータを表示しています（NEXT_PUBLIC_GAS_WEB_APP_URL 未設定）
+          ※現在デモ用サンプルデータを表示しています（NEXT_PUBLIC_GAS_WEB_APP_URL
+          未設定）
         </div>
       )}
 
       <div className="mx-auto max-w-6xl px-5 py-9 sm:px-9 sm:py-12">
         <div className="mb-9 flex items-end justify-between">
           <div>
-            <p className="mb-2 text-sm tracking-[.18em] text-[#b9985e]">MENU COLLECTION</p>
-            <h1 className="font-serif text-4xl text-[#f6f0e5] sm:text-5xl">自店舗メニュー</h1>
+            <p className="mb-2 text-sm tracking-[.18em] text-[#b9985e]">
+              MENU COLLECTION
+            </p>
+            <h1 className="font-serif text-4xl text-[#f6f0e5] sm:text-5xl">
+              自店舗メニュー
+            </h1>
           </div>
           <p className="text-sm text-[#8f8575]">{visible.length} MENU</p>
         </div>
@@ -1752,7 +1870,9 @@ function StoreMenuList({
                   <MenuThumb tone={index % 3} large />
                 </div>
                 <div className="p-6">
-                  <p className="mb-2 text-xs tracking-[.16em] text-[#ad905c]">PDF MENU</p>
+                  <p className="mb-2 text-xs tracking-[.16em] text-[#ad905c]">
+                    PDF MENU
+                  </p>
                   <h2 className="min-h-14 font-serif text-2xl leading-snug text-[#f8f2e8]">
                     {shortTitle(menu.title)}
                   </h2>
@@ -1774,8 +1894,12 @@ function StoreMenuList({
         ) : (
           <div className="rounded-2xl border border-[#3d3528] bg-[#1b1915] px-6 py-20 text-center">
             <FileText className="mx-auto mb-4 size-10 text-[#6e6049]" />
-            <p className="text-lg text-[#c6baa6]">公開中のメニューはありません</p>
-            <p className="mt-2 text-sm text-[#766d60]">管理者へご確認ください。</p>
+            <p className="text-lg text-[#c6baa6]">
+              公開中のメニューはありません
+            </p>
+            <p className="mt-2 text-sm text-[#766d60]">
+              管理者へご確認ください。
+            </p>
           </div>
         )}
       </div>
@@ -1798,7 +1922,6 @@ function PdfViewer({
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(100);
   const [total, setTotal] = useState(menu.fileUrl ? 1 : 2);
-  const [chromeVisible, setChromeVisible] = useState(true);
   const [turnAnim, setTurnAnim] = useState<'next' | 'prev' | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
 
@@ -1810,6 +1933,24 @@ function PdfViewer({
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const initialPanRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const hasDraggedRef = useRef(false);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{
+    distance: number;
+    zoom: number;
+    midpoint: { x: number; y: number };
+    pan: { x: number; y: number };
+  } | null>(null);
+
+  const clampZoom = (value: number) => Math.max(100, Math.min(400, value));
+  const getPinchGeometry = () => {
+    const points = Array.from(pointersRef.current.values());
+    if (points.length < 2) return null;
+    const [a, b] = points;
+    return {
+      distance: Math.hypot(b.x - a.x, b.y - a.y),
+      midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    };
+  };
 
   // ズーム変更時、100%に戻ったらパンをリセット
   useEffect(() => {
@@ -1883,6 +2024,9 @@ function PdfViewer({
         event.preventDefault();
         setZoom(100);
         setPan({ x: 0, y: 0 });
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        onBack();
       }
     };
 
@@ -1890,18 +2034,66 @@ function PdfViewer({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [movePage, page, total, turnAnim]);
+  }, [movePage, onBack, page, total, turnAnim]);
 
   // ポインター押下
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    pointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    if (pointersRef.current.size >= 2) {
+      const geometry = getPinchGeometry();
+      if (geometry) {
+        pinchRef.current = {
+          ...geometry,
+          zoom,
+          pan: { ...pan },
+        };
+        setIsPanning(true);
+        setSwipeOffset(0);
+      }
+      return;
+    }
+
     dragStartRef.current = { x: event.clientX, y: event.clientY };
     initialPanRef.current = { ...pan };
     hasDraggedRef.current = false;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
   // ポインター移動
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    if (pointersRef.current.size >= 2 && pinchRef.current) {
+      const geometry = getPinchGeometry();
+      if (!geometry) return;
+      const nextZoom = clampZoom(
+        pinchRef.current.zoom *
+          (geometry.distance / Math.max(1, pinchRef.current.distance)),
+      );
+      setZoom(nextZoom);
+      setPan({
+        x:
+          pinchRef.current.pan.x +
+          geometry.midpoint.x -
+          pinchRef.current.midpoint.x,
+        y:
+          pinchRef.current.pan.y +
+          geometry.midpoint.y -
+          pinchRef.current.midpoint.y,
+      });
+      setIsPanning(true);
+      hasDraggedRef.current = true;
+      return;
+    }
+
     if (!dragStartRef.current) return;
 
     const deltaX = event.clientX - dragStartRef.current.x;
@@ -1917,17 +2109,38 @@ function PdfViewer({
       const limitX = Math.max(200, window.innerWidth * (zoom / 100) * 0.7);
       const limitY = Math.max(200, window.innerHeight * (zoom / 100) * 0.7);
 
-      const nextX = Math.max(-limitX, Math.min(limitX, initialPanRef.current.x + deltaX));
-      const nextY = Math.max(-limitY, Math.min(limitY, initialPanRef.current.y + deltaY));
+      const nextX = Math.max(
+        -limitX,
+        Math.min(limitX, initialPanRef.current.x + deltaX),
+      );
+      const nextY = Math.max(
+        -limitY,
+        Math.min(limitY, initialPanRef.current.y + deltaY),
+      );
       setPan({ x: nextX, y: nextY });
     } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
       const allowed = (deltaX < 0 && page < total) || (deltaX > 0 && page > 1);
-      setSwipeOffset(allowed ? Math.max(-120, Math.min(120, deltaX)) : deltaX * 0.15);
+      setSwipeOffset(
+        allowed ? Math.max(-120, Math.min(120, deltaX)) : deltaX * 0.15,
+      );
     }
   };
 
   // ポインター離上
   const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const wasPinching = Boolean(pinchRef.current);
+    pointersRef.current.delete(event.pointerId);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+
+    if (wasPinching) {
+      if (pointersRef.current.size < 2) pinchRef.current = null;
+      const remaining = Array.from(pointersRef.current.values())[0];
+      dragStartRef.current = remaining ? { ...remaining } : null;
+      initialPanRef.current = { ...pan };
+      setIsPanning(false);
+      return;
+    }
+
     if (!dragStartRef.current) return;
 
     const deltaX = event.clientX - dragStartRef.current.x;
@@ -1936,14 +2149,24 @@ function PdfViewer({
 
     setIsPanning(false);
 
-    if (zoom <= 100 && Math.abs(deltaX) >= 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+    if (
+      zoom <= 100 &&
+      Math.abs(deltaX) >= 45 &&
+      Math.abs(deltaX) > Math.abs(deltaY) * 1.2
+    ) {
       movePage(deltaX < 0 ? 1 : -1);
-    } else if (!hasDraggedRef.current && dist < 5) {
-      setChromeVisible((prev) => !prev);
     }
 
     dragStartRef.current = null;
     if (!turnAnim) setSwipeOffset(0);
+  };
+
+  const onPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+    pointersRef.current.delete(event.pointerId);
+    pinchRef.current = null;
+    dragStartRef.current = null;
+    setIsPanning(false);
+    setSwipeOffset(0);
   };
 
   // マウスホイール
@@ -1960,95 +2183,33 @@ function PdfViewer({
     }
   };
 
-  // ダブルクリックでズーム切り替え
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (zoom > 100) {
-      setZoom(100);
-      setPan({ x: 0, y: 0 });
-    } else {
-      setZoom(160);
-    }
-  };
-
   return (
-    <main className={`viewer-surface ${chromeVisible ? '' : 'viewer-pdf-only'}`}>
-      {chromeVisible && (
-        <header className="viewer-header z-30">
-          <button
-            onClick={onBack}
-            className="flex h-12 items-center gap-2 rounded-xl px-3 text-[#e7dcc9] hover:bg-white/5"
-          >
-            <ArrowLeft />
-            一覧に戻る
-          </button>
-          <h1 className="absolute left-1/2 max-w-[45%] -translate-x-1/2 truncate font-serif text-lg text-white sm:text-xl">
-            {menu.title}
-          </h1>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setChromeVisible(false)}
-              className="rounded-xl border-[#504633] bg-transparent text-[#e7dcc9] hover:bg-white/5 hover:text-white"
-            >
-              <EyeOff className="size-4" />
-              <span className="hidden sm:inline">全画面表示</span>
-            </Button>
-            <span className="rounded-lg border border-[#504633] px-3 py-2 text-sm text-[#cdbd9f]">
-              {page} / {total}
-            </span>
-          </div>
-        </header>
-      )}
-
-      {/* 拡大中ガイドバッジ */}
-      {zoom > 100 && (
-        <div className="pointer-events-none absolute top-4 inset-x-0 z-20 flex justify-center">
-          <div className="flex items-center gap-2 rounded-full border border-amber-400/30 bg-black/75 px-4 py-1.5 text-xs font-semibold text-amber-200 shadow-xl backdrop-blur-md">
-            <Move className="size-3.5 animate-pulse" />
-            ドラッグまたはスクロールで紙面を自由に移動できます ({zoom}%)
-          </div>
-        </div>
-      )}
-
+    <main className="viewer-surface viewer-pdf-only">
       {/* ビューアーステージ */}
       <div
         className={`viewer-stage ${zoom > 100 ? (isPanning ? 'viewer-panning' : 'viewer-pannable') : ''}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
         onWheel={onWheel}
-        onDoubleClick={handleDoubleClick}
       >
-        <button
-          aria-label="前のページ"
-          disabled={page === 1 || Boolean(turnAnim) || isLoadingPdf}
-          onClick={(event) => {
-            event.stopPropagation();
-            movePage(-1);
-          }}
-          className="viewer-edge-nav viewer-edge-prev"
-        >
-          <ChevronLeft />
-          <span>前へ</span>
-        </button>
-
         <div className="book-turn-viewport">
           <div
             className={`book-turn-stage ${
               turnAnim === 'next'
                 ? 'book-anim-next'
                 : turnAnim === 'prev'
-                ? 'book-anim-prev'
-                : ''
+                  ? 'book-anim-prev'
+                  : ''
             }`}
             style={{
               transform:
                 zoom > 100
                   ? `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom / 100})`
                   : swipeOffset
-                  ? `translate3d(${swipeOffset}px, 0, 0) rotateY(${swipeOffset / 18}deg)`
-                  : undefined,
+                    ? `translate3d(${swipeOffset * 0.24}px, -3px, 0) scale(0.985)`
+                    : undefined,
               transition: isPanning ? 'none' : 'transform 0.12s ease-out',
             }}
           >
@@ -2056,7 +2217,9 @@ function PdfViewer({
             {isLoadingPdf ? (
               <div className="flex min-h-[400px] flex-col items-center justify-center gap-3 text-amber-200">
                 <Loader2 className="size-10 animate-spin text-[#ba985b]" />
-                <p className="font-serif text-sm tracking-wide">PDFを安全に読み込んでいます...</p>
+                <p className="font-serif text-sm tracking-wide">
+                  PDFを安全に読み込んでいます...
+                </p>
               </div>
             ) : menu.fileUrl ? (
               <PdfCanvas
@@ -2069,98 +2232,12 @@ function PdfViewer({
             )}
           </div>
         </div>
-
-        <button
-          aria-label="次のページ"
-          disabled={page === total || Boolean(turnAnim) || isLoadingPdf}
-          onClick={(event) => {
-            event.stopPropagation();
-            movePage(1);
-          }}
-          className="viewer-edge-nav viewer-edge-next"
-        >
-          <span>次へ</span>
-          <ChevronRight />
-        </button>
       </div>
-
-      {chromeVisible && (
-        <footer className="viewer-controls z-30">
-          <Button
-            disabled={page === 1 || Boolean(turnAnim) || isLoadingPdf}
-            onClick={() => movePage(-1)}
-            className="viewer-nav"
-            title="前のページを捲る (←)"
-          >
-            <ChevronLeft />
-            前のページを捲る
-          </Button>
-
-          <div className="flex flex-col items-center justify-center gap-1.5">
-            <div className="flex items-center justify-center gap-2">
-              <Button
-                aria-label="縮小"
-                variant="outline"
-                onClick={() => setZoom((z) => Math.max(100, z - 20))}
-                className="viewer-tool"
-                title="PDFを縮小 (-)"
-              >
-                <Minus />
-              </Button>
-              <span className="w-14 text-center text-sm font-semibold text-[#cdbd9f]">
-                {zoom}%
-              </span>
-              <Button
-                aria-label="拡大"
-                variant="outline"
-                onClick={() => setZoom((z) => Math.min(260, z + 20))}
-                className="viewer-tool"
-                title="PDFを拡大 (+/=)"
-              >
-                <Plus />
-              </Button>
-              <Button
-                aria-label="表示をリセット"
-                variant="outline"
-                onClick={() => {
-                  setZoom(100);
-                  setPan({ x: 0, y: 0 });
-                }}
-                className="viewer-tool"
-                title="倍率と表示位置をリセット (0)"
-              >
-                <RotateCcw className="size-4" />
-              </Button>
-            </div>
-            <div className="hidden select-none items-center gap-3 text-[11px] text-[#8e8271] sm:flex">
-              <span className="flex items-center gap-1">
-                <kbd className="rounded border border-[#3b3327] bg-[#1f1b14] px-1 py-0.5 font-mono text-[10px] text-[#cdbd9f]">←</kbd>
-                <kbd className="rounded border border-[#3b3327] bg-[#1f1b14] px-1 py-0.5 font-mono text-[10px] text-[#cdbd9f]">→</kbd>
-                <span>移動</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <kbd className="rounded border border-[#3b3327] bg-[#1f1b14] px-1 py-0.5 font-mono text-[10px] text-[#cdbd9f]">+</kbd>
-                <kbd className="rounded border border-[#3b3327] bg-[#1f1b14] px-1 py-0.5 font-mono text-[10px] text-[#cdbd9f]">-</kbd>
-                <span>ズーム</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <kbd className="rounded border border-[#3b3327] bg-[#1f1b14] px-1 py-0.5 font-mono text-[10px] text-[#cdbd9f]">0</kbd>
-                <span>リセット</span>
-              </span>
-            </div>
-          </div>
-
-          <Button
-            disabled={page === total || Boolean(turnAnim) || isLoadingPdf}
-            onClick={() => movePage(1)}
-            className="viewer-nav"
-            title="次のページを捲る (→)"
-          >
-            次のページを捲る
-            <ChevronRight />
-          </Button>
-        </footer>
-      )}
+      <div className="viewer-page-indicator" aria-live="polite">
+        {page}
+        <span>/</span>
+        {total}
+      </div>
     </main>
   );
 }
@@ -2178,11 +2255,15 @@ function PdfCanvas({
   onLoaded: (pages: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(
+    'loading',
+  );
 
   useEffect(() => {
     let cancelled = false;
-    let renderTask: { cancel: () => void; promise: Promise<unknown> } | undefined;
+    let renderTask:
+      | { cancel: () => void; promise: Promise<unknown> }
+      | undefined;
     let documentTask: { destroy: () => Promise<void> } | undefined;
 
     const render = async () => {
@@ -2194,7 +2275,9 @@ function PdfCanvas({
           import.meta.url,
         ).toString();
 
-        const bytes = new Uint8Array(await (await fetch(fileUrl)).arrayBuffer());
+        const bytes = new Uint8Array(
+          await (await fetch(fileUrl)).arrayBuffer(),
+        );
         const loadingTask = pdfjs.getDocument({
           data: bytes,
         });
@@ -2221,7 +2304,10 @@ function PdfCanvas({
       } catch (error) {
         if (
           !cancelled &&
-          !(error instanceof Error && error.name === 'RenderingCancelledException')
+          !(
+            error instanceof Error &&
+            error.name === 'RenderingCancelledException'
+          )
         ) {
           setStatus('error');
         }
@@ -2243,8 +2329,12 @@ function PdfCanvas({
         className={`pdf-canvas ${status === 'ready' ? 'opacity-100' : 'opacity-0'}`}
         style={{ height: 'min(78vh, 880px)' }}
       />
-      {status === 'loading' && <p className="pdf-status">PDFを描画しています...</p>}
-      {status === 'error' && <p className="pdf-status">PDFを表示できませんでした</p>}
+      {status === 'loading' && (
+        <p className="pdf-status">PDFを描画しています...</p>
+      )}
+      {status === 'error' && (
+        <p className="pdf-status">PDFを表示できませんでした</p>
+      )}
     </div>
   );
 }
@@ -2252,26 +2342,52 @@ function PdfCanvas({
 // ==========================================
 // モック用ダミー画面 (MockPdfPage)
 // ==========================================
-function MockPdfPage({
-  menu,
-  page,
-}: {
-  menu: MenuPdf;
-  page: number;
-}) {
+function MockPdfPage({ menu, page }: { menu: MenuPdf; page: number }) {
   const content =
     page === 1
       ? [
-          { name: 'ドン ペリニヨン ヴィンテージ', en: 'Dom Pérignon Vintage', price: '¥85,000' },
-          { name: 'クリュッグ グランド キュヴェ', en: 'Krug Grande Cuvée', price: '¥98,000' },
-          { name: 'アルマン・ド・ブリニャック', en: 'Armand de Brignac Gold', price: '¥160,000' },
-          { name: 'ペリエ ジュエ ベル エポック', en: 'Perrier-Jouët Belle Epoque', price: '¥78,000' },
+          {
+            name: 'ドン ペリニヨン ヴィンテージ',
+            en: 'Dom Pérignon Vintage',
+            price: '¥85,000',
+          },
+          {
+            name: 'クリュッグ グランド キュヴェ',
+            en: 'Krug Grande Cuvée',
+            price: '¥98,000',
+          },
+          {
+            name: 'アルマン・ド・ブリニャック',
+            en: 'Armand de Brignac Gold',
+            price: '¥160,000',
+          },
+          {
+            name: 'ペリエ ジュエ ベル エポック',
+            en: 'Perrier-Jouët Belle Epoque',
+            price: '¥78,000',
+          },
         ]
       : [
-          { name: 'オーパス・ワン 2019', en: 'Opus One Napa Valley', price: '¥145,000' },
-          { name: 'シャトー・マルゴー 2017', en: 'Château Margaux Premier Grand Cru', price: '¥220,000' },
-          { name: 'ケンゾー エステイト 紫鈴 rindo', en: 'KENZO ESTATE rindo', price: '¥55,000' },
-          { name: 'サッシカイア 2020', en: 'Sassicaia Bolgheri', price: '¥88,000' },
+          {
+            name: 'オーパス・ワン 2019',
+            en: 'Opus One Napa Valley',
+            price: '¥145,000',
+          },
+          {
+            name: 'シャトー・マルゴー 2017',
+            en: 'Château Margaux Premier Grand Cru',
+            price: '¥220,000',
+          },
+          {
+            name: 'ケンゾー エステイト 紫鈴 rindo',
+            en: 'KENZO ESTATE rindo',
+            price: '¥55,000',
+          },
+          {
+            name: 'サッシカイア 2020',
+            en: 'Sassicaia Bolgheri',
+            price: '¥88,000',
+          },
         ];
 
   return (
