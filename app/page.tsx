@@ -1814,14 +1814,17 @@ function PdfCanvas({
       try {
         setStatus('loading');
         const pdfjs = await import('pdfjs-dist');
-        pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version || '5.4.149'}/build/pdf.worker.min.mjs`;
+        // Safariでは外部CDNのmodule workerがCORS/CSPで拒否されるため、
+        // ビルドへ同梱した同一オリジンのworkerを使用する。
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.min.mjs',
+          import.meta.url,
+        ).toString();
 
         // Base64またはURLからArrayBufferを取得
         const bytes = new Uint8Array(await (await fetch(fileUrl)).arrayBuffer());
         const loadingTask = pdfjs.getDocument({
           data: bytes,
-          cMapUrl: 'https://unpkg.com/pdfjs-dist@5.4.149/cmaps/',
-          cMapPacked: true,
         });
         const pdf = await loadingTask.promise;
         documentTask = pdf;
