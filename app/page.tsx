@@ -1015,7 +1015,7 @@ function UnifiedLogin({
 
               <Button
                 type="submit"
-                disabled={apiStatus !== 'ready'}
+                disabled={!prototypeMode && apiStatus !== 'ready'}
                 className="h-12 w-full rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 text-base font-bold text-white shadow-md shadow-amber-600/20 hover:from-amber-700 hover:to-amber-800"
               >
                 店舗端末としてログイン
@@ -1089,7 +1089,7 @@ function UnifiedLogin({
 
               <Button
                 type="submit"
-                disabled={apiStatus !== 'ready'}
+                disabled={!prototypeMode && apiStatus !== 'ready'}
                 className="h-12 w-full rounded-xl bg-blue-600 text-base font-bold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700"
               >
                 管理者としてログイン
