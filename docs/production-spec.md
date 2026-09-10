@@ -1,71 +1,53 @@
 # INSOU メニュー閲覧システム 本番仕様
 
-## 1. 目的と正式構成
+## 1. 正式構成
 
-本番は実店舗で安全かつ継続的に利用する正式なWebシステムとする。
+- Frontend / Hosting: Next.js / Vercel
+- Backend: Supabase Database / Auth / Private Storage / RLS
+- Device cache: IndexedDB
+- Viewer: PDF.js / Canvas
 
-- Webアプリ：Next.js
-- デプロイ・実行環境：Vercel
-- バックエンド：Supabase
-- DB：Supabase Database（PostgreSQL）
-- 認証：Supabase Auth
-- PDF保存：Supabase Storage（Private）
+GAS PDF配信、Spreadsheetの業務DB利用、Google Drive PDF保存、Base64 JSON配信は旧MVP限定の暫定構成とし、本番では廃止する。
 
-```text
-店舗 / 管理者 → ブラウザ → Next.js → Vercel → Supabase
-                                                ├ Database
-                                                ├ Auth
-                                                └ Storage
-```
+## 2. データモデル
 
-## 2. データとPDF保存
+- `stores`: 店舗コード、店舗名、エリア、パスワード更新日、最終ログイン。
+- `user_profiles`: Supabase Authユーザーの `admin/store` ロールと店舗の紐付け。
+- `menus`: タイトル、元ファイル名、Private Storage path、公開状態、一般更新日 `updated_at`、PDF本体更新日 `pdf_updated_at`。
+- `menu_store_assignments`: PDFと公開店舗の多対多関係。
 
-Databaseでは店舗情報、メニュー情報、店舗とメニューの紐付け、業務データを管理する。メニューには `menu_id`、メニュー名、Storage上の `file_path`、`version`、`updated_at`、公開状態を保持する。PDF本体はDatabaseへ保存せず、Private設定のSupabase Storageへ保存する。一般公開URLは使用しない。
+UUIDを主キーとし、店舗割当て検索用索引を持つ。閲覧ログ、管理者、月次パスワード運用、100店舗以上へ拡張できる。
 
-## 3. 認証・セッション
+## 3. 認証とRLS
 
-Supabase Authにより店舗単位と管理者の正式な認証を行う。アカウントの有効・無効、安全なパスワード管理、セッション管理、アクセス制御を実装する。
+Supabase Authで認証し、`user_profiles` からロールと店舗を確定する。店舗は自店舗の行と、自店舗に公開中のメニューのみ参照できる。管理者のみが店舗、メニュー、割当、Storage objectを更新できる。
 
-店舗の運用は「ログイン操作は1日1回、パスワード入力は月1回」とする。月初の新パスワード認証後は認証状態を約1か月保持し、翌日以降は保持中の認証状態を確認してパスワード入力なしで利用開始できるようにする。
+RLSはDatabaseと `storage.objects` の両方で強制する。`service_role` キーをブラウザと `NEXT_PUBLIC_*` に公開しない。
 
-## 4. 月次パスワード変更
+## 4. PDF保存と配信
 
-月1回、店舗ごとの新しいパスワードを自動生成し、Supabase Authの認証情報を更新する。登録メールアドレスへGmailから、店舗名、新しいパスワード、適用開始日時、システムへのアクセス方法を送信する。
+PDFはPrivate bucket `menu-pdfs` へバイナリのまま保存する。Base64変換と巨大JSON応答は使用しない。認証セッション付きのStorage downloadまたは短時間のSigned URLを使用し、URLをUIへ表示しない。
 
-変更時には旧認証状態を失効させ、新しいパスワードで再認証させる。パスワード更新日時、メール送信日時、送信成功・失敗を記録するが、パスワード自体を操作ログへ平文保存しない。
+## 5. PDF差分同期
 
-## 5. 店舗別アクセス制御
+ログイン後はDBから軽量メタデータのみ取得し、`menuId + updatedAt` をIndexedDBと比較する。
 
-フロントエンドの非表示制御だけに依存しない。認証ユーザーから店舗IDを特定し、店舗・メニュー紐付けを検証したうえでPDF取得を許可する。Supabase DatabaseのRLSとStorage Policyにより、店舗Aが店舗B向けPDFへアクセスできないことをサーバー側でも保証する。
+- キャッシュなし：必要なPDFを取得し「最新のメニューを準備しています」を表示する。
+- 変更なし：Storage通信を行わずIndexedDBから即表示する。
+- PDF差し替え：`pdf_updated_at` が変わったPDFだけ取得して置換する。
+- 新規公開：対象PDFを追加する。
+- 公開終了：対象PDFをIndexedDBから削除する。
 
-## 6. PDF端末保存・更新同期
+パスワード変更日とPDF更新日は分離し、月次パスワード変更だけでPDFを再同期しない。
 
-Private Storageから取得したPDFをIndexedDB等のWebアプリ専用領域へ保存し、通常ファイルとしてFilesアプリ等へ保存しない。表示高速化、通信量削減、通信環境の影響低減を目的とする。
+## 6. ログイン速度
 
-ローカルの `version` または `updated_at` とSupabase上の最新情報を比較し、変更がなければローカルPDFを利用する。更新があれば最新PDFだけを取得して置き換える。PDFを開いた時点で全ページを先読みする。
+Supabase Authセッションを保持する。認証後は店舗情報とPDFメタデータを並列取得し、差分がなければPDF本体を取得しない。
 
-## 7. オフライン利用
+## 7. ビューアーと端末保存
 
-取得済みPDFはオフラインでも閲覧可能にする方向で、PWA、Service Worker、Cache Storage、IndexedDBを組み合わせる。完全なオフライン対応の詳細は本番開発時に設計する。
+PDFはIndexedDBにBlobとして保存し、FilesアプリやDownloadsに保存しない。PDF.jsの全ページ先読みとCanvas切り替えを維持する。ダウンロード、共有、直接URLのUIは設置しない。完全なDRMは要件外とする。
 
-## 8. 利用状況と閲覧ログ
+## 8. 後続フェーズ
 
-管理側で一定期間利用していない店舗を把握できるよう、店舗ID、最終ログイン日時、最終利用日時、最終PDF閲覧日時、PDF閲覧回数、閲覧メニューIDを記録する。未利用判定の日数は今後決定する。
-
-PDFが端末保存済みでも、開いた際に閲覧イベントを記録する。オンライン時はSupabaseへ送信し、オフライン時は端末へ一時保存してオンライン復帰後に同期する。
-
-## 9. PDF共有制御
-
-一般的な操作ではPDFを取り出し、共有・転送しにくい状態とする。ダウンロード、ファイル保存、Web Share API、外部アプリ起動、Storage公開URL表示を提供しない。スクリーンショット等の完全防止は要件外とする。
-
-## 10. 本番開発時の運用要件
-
-- Supabase RLSとStorage Policyの詳細設計・検証
-- 月次パスワード更新とGmail通知の安全なジョブ実行
-- 日次ログイン判定と約1か月のセッション管理
-- 利用ログ・PDF閲覧ログ・オフライン同期
-- PWA / Service Workerを含むオフライン設計
-- バックアップ、復旧手順、障害監視
-- 契約アカウント、費用負担、データ所有・移管、保守体制の確定
-
-MVPの実装範囲は [`mvp-spec.md`](./mvp-spec.md) を参照する。
+月次パスワード生成・Auth更新・Gmail通知、閲覧ログ、PWA / Service Worker、完全オフライン、監視、バックアップ、復旧手順は後続実装とする。パスワード本体はDBとログに平文保存しない。

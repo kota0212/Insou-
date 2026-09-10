@@ -1,3 +1,5 @@
+// 旧GAS版からの移行検証用にのみ残している互換コードです。
+// 現行アプリのPDF配信・認証経路からは参照されません。
 /**
  * Google Apps Script Web App API クライアント
  *
@@ -220,9 +222,10 @@ export async function fetchGasMenuPdf(
   } else {
     try {
       const cachedData = await getCachedPdf(menuId, updatedAt);
-      if (cachedData && isPdfData(cachedData)) {
-        pdfCache.set(cacheKey, cachedData);
-        return cachedData.slice(0);
+      const cachedBuffer = cachedData ? await cachedData.arrayBuffer() : null;
+      if (cachedBuffer && isPdfData(cachedBuffer)) {
+        pdfCache.set(cacheKey, cachedBuffer);
+        return cachedBuffer.slice(0);
       }
       if (cachedData) await removeCachedPdf(menuId);
     } catch (error) {
@@ -240,7 +243,11 @@ export async function fetchGasMenuPdf(
     throw new Error('取得したファイルは有効なPDFではありません');
   }
   try {
-    await storeCachedPdf(menuId, updatedAt, pdfData);
+    await storeCachedPdf(
+      menuId,
+      updatedAt,
+      new Blob([pdfData], { type: 'application/pdf' }),
+    );
   } catch (error) {
     console.warn('PDFをIndexedDBへ保存できませんでした:', error);
   }
@@ -261,7 +268,11 @@ export async function createGasMenu(params: {
   if (params.pdfBase64) {
     const data = dataUrlToArrayBuffer(params.pdfBase64);
     try {
-      await storeCachedPdf(created.id, created.updatedAt, data);
+      await storeCachedPdf(
+        created.id,
+        created.updatedAt,
+        new Blob([data], { type: 'application/pdf' }),
+      );
     } catch (error) {
       console.warn('PDFをIndexedDBへ保存できませんでした:', error);
     }
@@ -284,7 +295,11 @@ export async function updateGasMenu(params: {
   if (params.pdfBase64) {
     const data = dataUrlToArrayBuffer(params.pdfBase64);
     try {
-      await storeCachedPdf(updated.id, updated.updatedAt, data);
+      await storeCachedPdf(
+        updated.id,
+        updated.updatedAt,
+        new Blob([data], { type: 'application/pdf' }),
+      );
     } catch (error) {
       console.warn('PDFをIndexedDBへ保存できませんでした:', error);
     }

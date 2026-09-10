@@ -63,16 +63,22 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar';
 import {
-  isGasConfigured,
-  fetchGasInitData,
-  fetchGasMenuPdf,
-  createGasMenu,
-  updateGasMenu,
-  deleteGasMenu,
-  createGasStore,
-  deleteGasStore,
-  recordGasStoreLogin,
-} from '@/lib/gas-api';
+  createSupabaseMenu,
+  createSupabaseStore,
+  deleteSupabaseMenu,
+  deleteSupabaseStore,
+  fetchSupabaseInitData,
+  fetchSupabaseMenuPdf,
+  getCurrentSession,
+  getMenuSyncPlan,
+  recordStoreLogin,
+  signInAdmin,
+  signInStore,
+  signOut,
+  syncMenuPdfs,
+  updateSupabaseMenu,
+} from '@/lib/supabase-api';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
 
 export type Screen =
   | 'login'
@@ -80,6 +86,7 @@ export type Screen =
   | 'admin-new'
   | 'admin-stores'
   | 'store-list'
+  | 'sync'
   | 'viewer';
 
 export type Store = {
@@ -95,8 +102,9 @@ export type Store = {
 export type MenuPdf = {
   id: string;
   title: string;
-  fileUrl?: string; // 閲覧時に動的取得または登録時にBase64保持
-  pdfData?: ArrayBuffer; // 閲覧用バイナリ（iPad SafariでBlob URLを使わない）
+  pdfData?: Blob; // IndexedDBとメモリ内の閲覧用データ
+  storagePath?: string; // Supabase Private Storage内のパス（UIには表示しない）
+  isPublished?: boolean;
   fileName?: string;
   createdAt: string;
   updatedAt: string;
@@ -105,7 +113,7 @@ export type MenuPdf = {
 
 export type ApiStatus = 'unconfigured' | 'loading' | 'ready' | 'error';
 
-// GAS未設定時や初期化前のフォールバック用サンプル店舗データ
+// 認証前の店舗コード入力補助。業務データは認証後にSupabaseから取得する。
 const initialStores: Store[] = [
   { id: 'kitashinchi-a', code: 'KS-01', name: '北新地A店', area: '大阪' },
   { id: 'kitashinchi-b', code: 'KS-02', name: '北新地B店', area: '大阪' },
@@ -115,37 +123,6 @@ const initialStores: Store[] = [
   { id: 'kyoto-b', code: 'KT-02', name: '京都B店', area: '京都' },
   { id: 'kobe', code: 'KB-01', name: '神戸店', area: '神戸' },
   { id: 'sannomiya', code: 'SN-01', name: '三宮店', area: '神戸' },
-];
-
-// GAS未設定時や初期化前のフォールバック用サンプルメニューデータ（複数店舗割当対応）
-const initialMenus: MenuPdf[] = [
-  {
-    id: 'champagne-202609',
-    title: 'シャンパンメニュー 2026年9月版',
-    fileUrl: '',
-    fileName: 'champagne_202609.pdf',
-    createdAt: '2026-09-01',
-    updatedAt: '2026-09-01',
-    storeIds: ['kitashinchi-a', 'kitashinchi-b'],
-  },
-  {
-    id: 'wine-202609',
-    title: 'ワインメニュー 2026年9月版',
-    fileUrl: '',
-    fileName: 'wine_202609.pdf',
-    createdAt: '2026-08-28',
-    updatedAt: '2026-09-02',
-    storeIds: ['kitashinchi-a', 'minami-a', 'shinsaibashi', 'kyoto-a', 'kobe'],
-  },
-  {
-    id: 'autumn-2026',
-    title: '季節のおすすめ 2026年秋',
-    fileUrl: '',
-    fileName: 'autumn_recommended.pdf',
-    createdAt: '2026-08-25',
-    updatedAt: '2026-08-31',
-    storeIds: ['kitashinchi-a', 'kyoto-b', 'sannomiya'],
-  },
 ];
 
 const formatDate = (date: string) => {
@@ -178,6 +155,14 @@ const shortTitle = (title: string) => title.replace(/\s*20\d{2}年.*$/, '');
 
 type LoginMode = 'store' | 'admin';
 
+const prototypeMode = process.env.NEXT_PUBLIC_PROTOTYPE_MODE === 'true';
+const prototypeStoreCode = process.env.NEXT_PUBLIC_PROTOTYPE_STORE_CODE ?? '';
+const prototypeStorePin = process.env.NEXT_PUBLIC_PROTOTYPE_STORE_PIN ?? '';
+const prototypeAdminEmail =
+  process.env.NEXT_PUBLIC_PROTOTYPE_ADMIN_EMAIL ?? 'k.nishida@vexum-ai.com';
+const prototypeAdminPassword =
+  process.env.NEXT_PUBLIC_PROTOTYPE_ADMIN_PASSWORD ?? '';
+
 export default function HomePage() {
   const pathname = usePathname();
   const loginMode: LoginMode = pathname.startsWith('/admin')
@@ -185,7 +170,7 @@ export default function HomePage() {
     : 'store';
   const [screen, setScreen] = useState<Screen>('login');
   const [stores, setStores] = useState<Store[]>(initialStores);
-  const [menus, setMenus] = useState<MenuPdf[]>(initialMenus);
+  const [menus, setMenus] = useState<MenuPdf[]>([]);
   const [storeId, setStoreId] = useState('kitashinchi-a');
   const [activeId, setActiveId] = useState('');
   const [returnScreen, setReturnScreen] = useState<Screen>('store-list');
@@ -194,29 +179,36 @@ export default function HomePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState('');
+  const [syncProgress, setSyncProgress] = useState({ complete: 0, total: 0 });
+  const didResumeSessionRef = useRef(false);
 
-  // Google Apps Script から初期データを取得（localStorageは主保存先として使わない）
+  // 認証済みの場合だけSupabaseから軽量メタデータを取得する。
   const loadData = useCallback(async () => {
-    if (!isGasConfigured()) {
+    if (!isSupabaseConfigured()) {
       setApiStatus('unconfigured');
       setStores(initialStores);
-      setMenus(initialMenus);
+      setMenus([]);
       return;
     }
 
     setApiStatus('loading');
     setErrorMessage('');
     try {
-      const data = await fetchGasInitData();
+      const session = await getCurrentSession();
+      if (!session) {
+        setStores(initialStores);
+        setMenus([]);
+        setApiStatus('ready');
+        return;
+      }
+      const data = await fetchSupabaseInitData();
       setStores(data.stores.length > 0 ? data.stores : []);
       setMenus(data.menus.length > 0 ? data.menus : []);
       setApiStatus('ready');
     } catch (err) {
       setApiStatus('error');
       setErrorMessage(
-        err instanceof Error
-          ? err.message
-          : 'Google Apps Script APIとの通信に失敗しました',
+        err instanceof Error ? err.message : 'Supabaseとの通信に失敗しました',
       );
     }
   }, []);
@@ -277,7 +269,7 @@ export default function HomePage() {
     return () => lifecycle.abort();
   }, [menus, stores]);
 
-  // PDFビューアーを開く処理（PDF本体をGASから安全に遅延ロード）
+  // PDFビューアーを開く処理（Private Storageから必要時のみ取得）
   const handleOpenViewer = async (
     menuId: string,
     returnTo: Screen,
@@ -289,17 +281,20 @@ export default function HomePage() {
     setPdfError('');
 
     const targetMenu = menus.find((m) => m.id === menuId);
-    // すでにローカルURLやキャッシュがある場合、またはGAS未設定でモック表示する場合はスキップ
+    // IndexedDB/メモリに同じupdatedAtのPDFがあればStorageにアクセスしない。
     if (
-      targetMenu &&
+      targetMenu?.storagePath &&
       (!targetMenu.pdfData || forceRefresh) &&
-      isGasConfigured()
+      isSupabaseConfigured()
     ) {
       setIsPdfLoading(true);
       try {
-        const pdfData = await fetchGasMenuPdf(
-          menuId,
-          targetMenu.updatedAt,
+        const pdfData = await fetchSupabaseMenuPdf(
+          {
+            id: targetMenu.id,
+            updatedAt: targetMenu.updatedAt,
+            storagePath: targetMenu.storagePath,
+          },
           forceRefresh,
         );
         setMenus((prev) =>
@@ -320,64 +315,40 @@ export default function HomePage() {
   const handleSaveMenu = async (menuData: {
     id?: string;
     title: string;
-    fileUrl: string;
+    file?: File;
     fileName?: string;
     storeIds: string[];
     createdAt?: string;
   }) => {
     setIsSubmitting(true);
     try {
-      if (isGasConfigured()) {
+      if (isSupabaseConfigured()) {
         if (activeId) {
-          // 既存メニューの更新
-          const updated = await updateGasMenu({
+          const updated = await updateSupabaseMenu({
             id: activeId,
             title: menuData.title,
             storeIds: menuData.storeIds,
             fileName: menuData.fileName,
-            pdfBase64: menuData.fileUrl.startsWith('data:')
-              ? menuData.fileUrl
-              : undefined,
+            pdfFile: menuData.file,
           });
           setMenus((prev) =>
             prev.map((m) =>
               m.id === activeId
-                ? { ...m, ...updated, fileUrl: menuData.fileUrl || m.fileUrl }
+                ? { ...m, ...updated, pdfData: menuData.file || m.pdfData }
                 : m,
             ),
           );
         } else {
           // 新規メニュー作成
-          const created = await createGasMenu({
+          const created = await createSupabaseMenu({
             title: menuData.title,
             storeIds: menuData.storeIds,
             fileName: menuData.fileName || 'menu.pdf',
-            pdfBase64: menuData.fileUrl,
+            pdfFile: menuData.file!,
           });
-          setMenus((prev) => [
-            { ...created, fileUrl: menuData.fileUrl },
-            ...prev,
-          ]);
+          setMenus((prev) => [{ ...created, pdfData: menuData.file }, ...prev]);
         }
-      } else {
-        // 未設定時のフォールバック更新
-        const today = new Date().toISOString().slice(0, 10);
-        const item: MenuPdf = {
-          id: activeId || `menu-${Date.now()}`,
-          title: menuData.title,
-          fileUrl: menuData.fileUrl,
-          fileName: menuData.fileName,
-          createdAt: menuData.createdAt || today,
-          updatedAt: today,
-          storeIds: menuData.storeIds,
-        };
-        setMenus((prev) => {
-          if (activeId) {
-            return prev.map((m) => (m.id === activeId ? item : m));
-          }
-          return [item, ...prev];
-        });
-      }
+      } else throw new Error('Supabaseの接続設定が必要です');
       setActiveId('');
       setScreen('admin-list');
     } catch (err) {
@@ -393,9 +364,9 @@ export default function HomePage() {
   const handleDeleteMenu = async (id: string) => {
     setIsSubmitting(true);
     try {
-      if (isGasConfigured()) {
-        await deleteGasMenu(id);
-      }
+      if (!isSupabaseConfigured())
+        throw new Error('Supabaseの接続設定が必要です');
+      await deleteSupabaseMenu(id);
       setMenus((prev) => prev.filter((m) => m.id !== id));
       if (activeId === id) setActiveId('');
     } catch (err) {
@@ -411,12 +382,10 @@ export default function HomePage() {
   const handleAddStore = async (newStore: Store) => {
     setIsSubmitting(true);
     try {
-      if (isGasConfigured()) {
-        const created = await createGasStore(newStore);
+      if (isSupabaseConfigured()) {
+        const created = await createSupabaseStore(newStore);
         setStores((prev) => [...prev, created]);
-      } else {
-        setStores((prev) => [...prev, newStore]);
-      }
+      } else throw new Error('Supabaseの接続設定が必要です');
     } catch (err) {
       alert(
         `店舗追加に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
@@ -430,9 +399,9 @@ export default function HomePage() {
   const handleDeleteStore = async (delId: string) => {
     setIsSubmitting(true);
     try {
-      if (isGasConfigured()) {
-        await deleteGasStore(delId);
-      }
+      if (!isSupabaseConfigured())
+        throw new Error('Supabaseの接続設定が必要です');
+      await deleteSupabaseStore(delId);
       setStores((prev) => prev.filter((s) => s.id !== delId));
       setMenus((prev) =>
         prev.map((m) => ({
@@ -453,6 +422,65 @@ export default function HomePage() {
     }
   };
 
+  const prepareStoreMenus = async (data: {
+    stores: Store[];
+    menus: MenuPdf[];
+  }) => {
+    const currentStore = data.stores[0];
+    if (!currentStore) throw new Error('認証ユーザーに店舗が紐付いていません');
+    const assignedMenus = data.menus.filter(
+      (menu): menu is MenuPdf & { storagePath: string } =>
+        Boolean(menu.storagePath && menu.storeIds.includes(currentStore.id)),
+    );
+    setStoreId(currentStore.id);
+    setStores(data.stores);
+
+    const plan = await getMenuSyncPlan(assignedMenus);
+    let cached = plan.cached;
+    if (plan.pending.length > 0) {
+      setSyncProgress({ complete: 0, total: plan.pending.length });
+      setScreen('sync');
+      const synced = await syncMenuPdfs(plan.pending, (complete, total) =>
+        setSyncProgress({ complete, total }),
+      );
+      cached = new Map([...cached, ...synced]);
+    }
+
+    const readyMenus = assignedMenus.map((menu) => ({
+      ...menu,
+      pdfData: cached.get(menu.id),
+    }));
+    setMenus(readyMenus);
+    const firstMenu = readyMenus[0];
+    if (firstMenu) {
+      setActiveId(firstMenu.id);
+      setReturnScreen('login');
+      setScreen('viewer');
+    } else {
+      setScreen('store-list');
+    }
+  };
+
+  useEffect(() => {
+    if (
+      didResumeSessionRef.current ||
+      loginMode !== 'store' ||
+      screen !== 'login' ||
+      apiStatus !== 'ready' ||
+      stores.length !== 1
+    ) {
+      return;
+    }
+    didResumeSessionRef.current = true;
+    void prepareStoreMenus({ stores, menus }).catch((error) => {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'メニューの準備に失敗しました',
+      );
+      setApiStatus('error');
+      setScreen('login');
+    });
+  }, [apiStatus, loginMode, menus, screen, stores]);
+
   const activeMenu = menus.find((m) => m.id === activeId);
 
   // 通信中ローディング画面
@@ -464,9 +492,7 @@ export default function HomePage() {
           <p className="text-base font-bold text-slate-800">
             データを読み込んでいます...
           </p>
-          <p className="text-xs text-slate-500">
-            Google Apps Script Web App API と通信中
-          </p>
+          <p className="text-xs text-slate-500">Supabaseと通信中</p>
         </div>
       </div>
     );
@@ -483,10 +509,9 @@ export default function HomePage() {
           </h2>
           <p className="text-xs text-slate-600 mb-4">{errorMessage}</p>
           <p className="text-[11px] text-slate-500 mb-6 bg-slate-50 p-2.5 rounded-lg text-left">
-            ・NEXT_PUBLIC_GAS_WEB_APP_URL の設定を確認してください。
+            ・SupabaseのURLとanon keyを確認してください。
             <br />
-            ・GAS Web App の公開範囲が「全員
-            (Anyone)」になっているか確認してください。
+            ・DB migration、Authユーザー、RLSの設定を確認してください。
           </p>
           <div className="flex gap-2 justify-center">
             <Button
@@ -496,19 +521,34 @@ export default function HomePage() {
               <RefreshCw className="mr-1.5 size-4" />
               再試行する
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setApiStatus('unconfigured');
-                setStores(initialStores);
-                setMenus(initialMenus);
-              }}
-            >
-              モックデータで開く
-            </Button>
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (screen === 'sync') {
+    const rate = syncProgress.total
+      ? Math.round((syncProgress.complete / syncProgress.total) * 100)
+      : 0;
+    return (
+      <main className="grid min-h-svh place-items-center bg-[#15130f] p-6 text-[#e8dcc5]">
+        <section className="w-full max-w-md text-center">
+          <Loader2 className="mx-auto size-10 animate-spin text-[#ba985b]" />
+          <h1 className="mt-5 font-serif text-2xl">
+            最新のメニューを準備しています
+          </h1>
+          <p className="mt-3 text-sm text-[#a99c87]">
+            {syncProgress.complete} / {syncProgress.total} 件完了（{rate}%）
+          </p>
+          <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#302a20]">
+            <div
+              className="h-full rounded-full bg-[#ba985b] transition-[width]"
+              style={{ width: `${rate}%` }}
+            />
+          </div>
+        </section>
+      </main>
     );
   }
 
@@ -522,20 +562,28 @@ export default function HomePage() {
         errorMessage={errorMessage}
         onRetry={() => void loadData()}
         onStoreLogin={async (selectedId, passcode) => {
-          setStoreId(selectedId);
-          if (isGasConfigured()) {
-            await recordGasStoreLogin(selectedId, passcode);
-          }
-          const assignedMenu = menus.find((menu) =>
-            menu.storeIds.includes(selectedId),
+          if (!isSupabaseConfigured())
+            throw new Error('Supabaseの接続設定が必要です');
+          const selected = stores.find((store) => store.id === selectedId);
+          if (!selected) throw new Error('店舗コードを確認してください');
+          await signInStore(selected.code, passcode);
+          const data = await fetchSupabaseInitData();
+          void recordStoreLogin().catch((error) =>
+            console.warn('ログイン日時を記録できませんでした:', error),
           );
-          if (assignedMenu) {
-            await handleOpenViewer(assignedMenu.id, 'login');
-          } else {
-            setScreen('store-list');
-          }
+          didResumeSessionRef.current = true;
+          await prepareStoreMenus(data);
         }}
-        onAdminLogin={() => setScreen('admin-list')}
+        onAdminLogin={async (email, password) => {
+          if (!isSupabaseConfigured())
+            throw new Error('Supabaseの接続設定が必要です');
+          await signInAdmin(email, password);
+          const data = await fetchSupabaseInitData();
+          setStores(data.stores);
+          setMenus(data.menus);
+          setApiStatus('ready');
+          setScreen('admin-list');
+        }}
       />
     );
   }
@@ -549,7 +597,10 @@ export default function HomePage() {
         menus={menus}
         apiStatus={apiStatus}
         onView={(id) => handleOpenViewer(id, 'store-list')}
-        onLogout={() => setScreen('login')}
+        onLogout={() => {
+          void signOut();
+          setScreen('login');
+        }}
       />
     );
   }
@@ -600,12 +651,13 @@ export default function HomePage() {
         setScreen(next);
       }}
       onLogout={() => {
+        void signOut();
         setActiveId('');
         setScreen('login');
       }}
     >
       {/* APIステータスバナー（未設定または通信エラー時） */}
-      <GasStatusNotification
+      <BackendStatusNotification
         status={apiStatus}
         errorMessage={errorMessage}
         onRetry={() => void loadData()}
@@ -666,9 +718,9 @@ function BrandMark({ dark = false }: { dark?: boolean }) {
 }
 
 // ==========================================
-// GAS API 状態通知バナー
+// Supabase接続状態通知バナー
 // ==========================================
-function GasStatusNotification({
+function BackendStatusNotification({
   status,
   errorMessage,
   onRetry,
@@ -685,10 +737,8 @@ function GasStatusNotification({
         <div className="flex items-center gap-2">
           <AlertTriangle className="size-4 text-amber-600 shrink-0" />
           <span>
-            <strong>【API URL未設定】</strong> 現在{' '}
-            <code>NEXT_PUBLIC_GAS_WEB_APP_URL</code>{' '}
-            が未設定のため、ローカルサンプルデータで動作しています。連携には{' '}
-            <code>.env.local</code> にGAS Web App URLを設定してください。
+            <strong>【Supabase未設定】</strong> <code>.env.local</code>{' '}
+            にProject URLとanon keyを設定してください。
           </span>
         </div>
       </div>
@@ -701,7 +751,7 @@ function GasStatusNotification({
         <div className="flex items-center gap-2">
           <AlertCircle className="size-4 text-red-600 shrink-0" />
           <span>
-            <strong>【GAS通信エラー】</strong>{' '}
+            <strong>【Supabase通信エラー】</strong>{' '}
             {errorMessage || 'データの同期に失敗しました。'}
           </span>
         </div>
@@ -738,13 +788,22 @@ function UnifiedLogin({
   errorMessage?: string;
   onRetry?: () => void;
   onStoreLogin: (storeId: string, passcode: string) => Promise<void>;
-  onAdminLogin: () => void;
+  onAdminLogin: (email: string, password: string) => Promise<void>;
 }) {
-  const [storeCode, setStoreCode] = useState('KS-01');
-  const [storePasscode, setStorePasscode] = useState('1234');
+  const [storeCode, setStoreCode] = useState(
+    prototypeMode ? prototypeStoreCode : '',
+  );
+  const [storePasscode, setStorePasscode] = useState(
+    prototypeMode ? prototypeStorePin : '',
+  );
   const [storeLoginError, setStoreLoginError] = useState('');
-  const [adminEmail, setAdminEmail] = useState('admin@insou-cloud.jp');
-  const [adminPass, setAdminPass] = useState('password123');
+  const [adminEmail, setAdminEmail] = useState(
+    prototypeMode ? prototypeAdminEmail : '',
+  );
+  const [adminPass, setAdminPass] = useState(
+    prototypeMode ? prototypeAdminPassword : '',
+  );
+  const [adminLoginError, setAdminLoginError] = useState('');
 
   // 入力された店舗コードから該当店舗を検索
   const trimmed = storeCode.trim().toLowerCase();
@@ -782,23 +841,20 @@ function UnifiedLogin({
   return (
     <main className="login-canvas admin-login-canvas">
       <section className="login-card max-w-lg w-full">
-        {/* MVPモック認証 注意喚起バッジ */}
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900 leading-relaxed">
-          <p className="font-bold flex items-center gap-1.5 text-amber-800">
-            <AlertTriangle className="size-3.5" />
-            【MVP検証用】ハリボテ認証仕様
-          </p>
-          <p className="mt-0.5 text-amber-700">
-            本システムは画面遷移・自店舗向けPDF一覧・閲覧フローを確認するためのモック認証です。本番セキュリティ（JWT、パスワード暗号化等）は意図的に実装されていません。
-          </p>
-        </div>
-
-        {/* GAS API 状態表示 */}
+        {prototypeMode && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+            <strong>試作モード</strong>
+            <span className="ml-2">
+              検証用のログイン情報を入力済みです。ログインボタンだけで開始できます。
+            </span>
+          </div>
+        )}
+        {/* Supabase接続状態 */}
         {apiStatus === 'unconfigured' && (
           <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/80 p-2.5 text-[11px] text-blue-900">
-            <strong>【GAS Web App URL未設定】</strong> <code>.env.local</code>{' '}
-            に <code>NEXT_PUBLIC_GAS_WEB_APP_URL</code> を設定するとGoogle Apps
-            Script連携が有効になります（現在はサンプルデータで表示中）。
+            <strong>【Supabase未設定】</strong> <code>.env.local</code>{' '}
+            にProject URLとanon
+            keyを設定してください。未設定の間はログインできません。
           </div>
         )}
         {apiStatus === 'error' && (
@@ -891,7 +947,7 @@ function UnifiedLogin({
               {/* クイック選択チップ */}
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <p className="text-[11px] font-bold text-slate-500 mb-2">
-                  デモ用店舗コード（タップで自動入力）:
+                  店舗コード候補（タップで入力）:
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {stores.slice(0, 6).map((s) => (
@@ -912,12 +968,9 @@ function UnifiedLogin({
                 </div>
               </div>
 
-              <p className="text-[11px] text-amber-700 bg-amber-50/80 border border-amber-200/60 rounded-xl p-2.5">
-                ※MVPデモのため、入力済みのまま「店舗端末としてログイン」を押すだけで自店舗向け一覧が開きます。
-              </p>
-
               <Button
                 type="submit"
+                disabled={apiStatus !== 'ready'}
                 className="h-12 w-full rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 text-base font-bold text-white shadow-md shadow-amber-600/20 hover:from-amber-700 hover:to-amber-800"
               >
                 店舗端末としてログイン
@@ -937,9 +990,18 @@ function UnifiedLogin({
             </div>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                onAdminLogin();
+                try {
+                  setAdminLoginError('');
+                  await onAdminLogin(adminEmail, adminPass);
+                } catch (error) {
+                  setAdminLoginError(
+                    error instanceof Error
+                      ? error.message
+                      : 'ログイン情報を確認してください。',
+                  );
+                }
               }}
               className="space-y-4"
             >
@@ -971,12 +1033,15 @@ function UnifiedLogin({
                 />
               </div>
 
-              <p className="text-[11px] text-blue-700 bg-blue-50/80 border border-blue-200/60 rounded-xl p-2.5">
-                ※MVPデモのため、初期入力のまま「管理者としてログイン」を押すだけで管理画面へ入れます。
-              </p>
+              {adminLoginError && (
+                <p role="alert" className="text-sm font-semibold text-red-600">
+                  {adminLoginError}
+                </p>
+              )}
 
               <Button
                 type="submit"
+                disabled={apiStatus !== 'ready'}
                 className="h-12 w-full rounded-xl bg-blue-600 text-base font-bold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700"
               >
                 管理者としてログイン
@@ -1130,8 +1195,7 @@ function AdminStoreManagement({
                 店舗一覧・管理
               </h1>
               <p className="mt-2 text-slate-500">
-                Google Apps
-                Script・Spreadsheetと同期し、メニューを配信する店舗を管理します。
+                Supabaseと同期し、メニューを配信する店舗を管理します。
               </p>
             </div>
             <span className="rounded-full bg-blue-50 px-4 py-1.5 text-sm font-bold text-blue-700">
@@ -1627,7 +1691,7 @@ function NewPdfForm({
   onSave: (menu: {
     id?: string;
     title: string;
-    fileUrl: string;
+    file?: File;
     fileName?: string;
     storeIds: string[];
     createdAt?: string;
@@ -1636,7 +1700,6 @@ function NewPdfForm({
   const editing = Boolean(initialMenu);
   const [title, setTitle] = useState(initialMenu?.title || '');
   const [file, setFile] = useState<File | null>(null);
-  const [fileUrl, setFileUrl] = useState(initialMenu?.fileUrl || '');
   const [selected, setSelected] = useState<string[]>(
     initialMenu?.storeIds || stores.map((s) => s.id),
   );
@@ -1661,9 +1724,6 @@ function NewPdfForm({
       return;
     }
     setFile(picked);
-    const reader = new FileReader();
-    reader.onload = () => setFileUrl(String(reader.result || ''));
-    reader.readAsDataURL(picked);
   };
 
   const submit = (event: React.FormEvent) => {
@@ -1671,7 +1731,7 @@ function NewPdfForm({
     if (!title.trim() || selected.length === 0 || isSubmitting) return;
 
     // 新規登録時はファイル必須
-    if (!editing && !fileUrl) {
+    if (!editing && !file) {
       alert('PDFファイルを選択してください。');
       return;
     }
@@ -1679,7 +1739,7 @@ function NewPdfForm({
     onSave({
       id: initialMenu?.id,
       title: title.trim(),
-      fileUrl,
+      file: file ?? undefined,
       fileName: file?.name || initialMenu?.fileName,
       storeIds: selected,
       createdAt: initialMenu?.createdAt,
@@ -1708,7 +1768,7 @@ function NewPdfForm({
           <p className="mt-2 text-slate-500">
             {editing
               ? '公開する店舗を変更すると、対象店舗の端末一覧へすぐに反映されます。'
-              : 'PDFをGoogle Driveへ保存し、閲覧対象の店舗を選択してください。'}
+              : 'PDFをPrivate Storageへ保存し、閲覧対象の店舗を選択してください。'}
           </p>
         </header>
 
@@ -1872,14 +1932,14 @@ function NewPdfForm({
                 !title.trim() ||
                 selected.length === 0 ||
                 isSubmitting ||
-                (!editing && !fileUrl)
+                (!editing && !file)
               }
               className="h-11 rounded-xl bg-blue-600 px-8 font-bold text-white shadow-sm hover:bg-blue-700"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
-                  Google Driveへ保存中...
+                  保存しています...
                 </>
               ) : (
                 '保存して公開'
@@ -1937,11 +1997,10 @@ function StoreMenuList({
         </Button>
       </header>
 
-      {/* GAS未設定バナー（店舗画面用） */}
+      {/* Supabase未設定バナー（店舗画面用） */}
       {apiStatus === 'unconfigured' && (
         <div className="bg-[#292318] border-b border-[#5a482b] px-4 py-2 text-center text-xs text-[#deb877]">
-          ※現在デモ用サンプルデータを表示しています（NEXT_PUBLIC_GAS_WEB_APP_URL
-          未設定）
+          ※Supabase接続設定が必要です
         </div>
       )}
 
@@ -2021,7 +2080,7 @@ function PdfViewer({
 }) {
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(100);
-  const [total, setTotal] = useState(menu.fileUrl ? 1 : 2);
+  const [total, setTotal] = useState(1);
   const [turnAnim, setTurnAnim] = useState<'next' | 'prev' | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
 
@@ -2321,16 +2380,18 @@ function PdfViewer({
               </div>
             ) : errorMessage ? (
               <PdfLoadError message={errorMessage} onRetry={onRetry} />
-            ) : menu.pdfData || menu.fileUrl ? (
+            ) : menu.pdfData ? (
               <PdfCanvas
                 pdfData={menu.pdfData}
-                fileUrl={menu.fileUrl}
                 page={page}
                 onLoaded={setTotal}
                 onRetry={onRetry}
               />
             ) : (
-              <MockPdfPage menu={menu} page={page} />
+              <PdfLoadError
+                message="PDFデータを読み込めませんでした"
+                onRetry={onRetry}
+              />
             )}
           </div>
         </div>
@@ -2372,13 +2433,11 @@ function PdfLoadError({
 // ==========================================
 function PdfCanvas({
   pdfData,
-  fileUrl,
   page,
   onLoaded,
   onRetry,
 }: {
-  pdfData?: ArrayBuffer;
-  fileUrl?: string;
+  pdfData: Blob;
   page: number;
   onLoaded: (pages: number) => void;
   onRetry: () => void;
@@ -2410,9 +2469,7 @@ function PdfCanvas({
           import.meta.url,
         ).toString();
 
-        const source = pdfData
-          ? pdfData.slice(0)
-          : await (await fetch(fileUrl!)).arrayBuffer();
+        const source = await pdfData.arrayBuffer();
         const bytes = new Uint8Array(source);
         if (
           bytes.length < 5 ||
@@ -2500,7 +2557,7 @@ function PdfCanvas({
       for (const task of renderTasks) task.cancel();
       void documentTask?.destroy();
     };
-  }, [fileUrl, onLoaded, pdfData]);
+  }, [onLoaded, pdfData]);
 
   useEffect(() => {
     const canvases =
@@ -2531,82 +2588,6 @@ function PdfCanvas({
           </Button>
         </div>
       )}
-    </div>
-  );
-}
-
-// ==========================================
-// モック用ダミー画面 (MockPdfPage)
-// ==========================================
-function MockPdfPage({ menu, page }: { menu: MenuPdf; page: number }) {
-  const content =
-    page === 1
-      ? [
-          {
-            name: 'ドン ペリニヨン ヴィンテージ',
-            en: 'Dom Pérignon Vintage',
-            price: '¥85,000',
-          },
-          {
-            name: 'クリュッグ グランド キュヴェ',
-            en: 'Krug Grande Cuvée',
-            price: '¥98,000',
-          },
-          {
-            name: 'アルマン・ド・ブリニャック',
-            en: 'Armand de Brignac Gold',
-            price: '¥160,000',
-          },
-          {
-            name: 'ペリエ ジュエ ベル エポック',
-            en: 'Perrier-Jouët Belle Epoque',
-            price: '¥78,000',
-          },
-        ]
-      : [
-          {
-            name: 'オーパス・ワン 2019',
-            en: 'Opus One Napa Valley',
-            price: '¥145,000',
-          },
-          {
-            name: 'シャトー・マルゴー 2017',
-            en: 'Château Margaux Premier Grand Cru',
-            price: '¥220,000',
-          },
-          {
-            name: 'ケンゾー エステイト 紫鈴 rindo',
-            en: 'KENZO ESTATE rindo',
-            price: '¥55,000',
-          },
-          {
-            name: 'サッシカイア 2020',
-            en: 'Sassicaia Bolgheri',
-            price: '¥88,000',
-          },
-        ];
-
-  return (
-    <div className="mock-paper">
-      <div className="paper-frame">
-        <p className="paper-tag">PREMIUM SELECTION</p>
-        <h3 className="paper-title">{shortTitle(menu.title)}</h3>
-        <p className="paper-sub">PAGE {page} / 2</p>
-
-        <div className="paper-grid">
-          {content.map((item) => (
-            <div key={item.name} className="paper-item">
-              <div>
-                <p className="paper-name">{item.name}</p>
-                <p className="paper-en">{item.en}</p>
-              </div>
-              <p className="paper-price">{item.price}</p>
-            </div>
-          ))}
-        </div>
-
-        <footer className="paper-footer">INSOU RESTAURANT GROUP</footer>
-      </div>
     </div>
   );
 }

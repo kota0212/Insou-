@@ -1,12 +1,13 @@
 const DATABASE_NAME = 'insou-menu-pdf-cache';
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 const STORE_NAME = 'pdfs';
 
 interface CachedPdf {
   key: string;
   menuId: string;
   updatedAt: string;
-  data: ArrayBuffer;
+  blob?: Blob;
+  data?: ArrayBuffer;
 }
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -36,7 +37,7 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
 export async function getCachedPdf(
   menuId: string,
   updatedAt: string,
-): Promise<ArrayBuffer | null> {
+): Promise<Blob | null> {
   if (typeof indexedDB === 'undefined') return null;
   const database = await openDatabase();
   try {
@@ -44,7 +45,10 @@ export async function getCachedPdf(
     const record = await requestResult<CachedPdf | undefined>(
       transaction.objectStore(STORE_NAME).get(`${menuId}:${updatedAt}`),
     );
-    return record?.data ?? null;
+    if (record?.blob) return record.blob;
+    return record?.data
+      ? new Blob([record.data], { type: 'application/pdf' })
+      : null;
   } finally {
     database.close();
   }
@@ -53,7 +57,7 @@ export async function getCachedPdf(
 export async function storeCachedPdf(
   menuId: string,
   updatedAt: string,
-  data: ArrayBuffer,
+  blob: Blob,
 ): Promise<void> {
   if (typeof indexedDB === 'undefined') return;
   const database = await openDatabase();
@@ -68,8 +72,29 @@ export async function storeCachedPdf(
       key: `${menuId}:${updatedAt}`,
       menuId,
       updatedAt,
-      data,
+      blob,
     } satisfies CachedPdf);
+    await new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  } finally {
+    database.close();
+  }
+}
+
+export async function removeCachedPdfsExcept(menuIds: string[]): Promise<void> {
+  if (typeof indexedDB === 'undefined') return;
+  const keep = new Set(menuIds);
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const records = await requestResult<CachedPdf[]>(store.getAll());
+    for (const record of records) {
+      if (!keep.has(record.menuId)) store.delete(record.key);
+    }
     await new Promise<void>((resolve, reject) => {
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
