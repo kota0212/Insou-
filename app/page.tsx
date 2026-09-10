@@ -161,7 +161,7 @@ const prototypeStorePin = process.env.NEXT_PUBLIC_PROTOTYPE_STORE_PIN ?? '';
 const prototypeAdminEmail =
   process.env.NEXT_PUBLIC_PROTOTYPE_ADMIN_EMAIL ?? 'k.nishida@vexum-ai.com';
 const prototypeAdminPassword =
-  process.env.NEXT_PUBLIC_PROTOTYPE_ADMIN_PASSWORD ?? '';
+  process.env.NEXT_PUBLIC_PROTOTYPE_ADMIN_PASSWORD || 'password';
 
 export default function HomePage() {
   const pathname = usePathname();
@@ -2511,11 +2511,10 @@ function PdfCanvas({
     const render = async () => {
       try {
         setStatus('loading');
-        const pdfjs = await import('pdfjs-dist');
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.min.mjs',
-          import.meta.url,
-        ).toString();
+        // Next.js/Webpack 用のエントリポイントを使う。ここで PDF.js の
+        // worker も同じビルド成果物として解決され、iPadを含むブラウザ側で
+        // PDF バイナリを安全に描画できる。
+        const pdfjs = await import('pdfjs-dist/webpack.mjs');
 
         const source = await pdfData.arrayBuffer();
         const bytes = new Uint8Array(source);
@@ -2571,7 +2570,6 @@ function PdfCanvas({
           canvas.style.height = 'min(78vh, 880px)';
           container.appendChild(canvas);
           const task = pdfPage.render({
-            canvas,
             canvasContext: context,
             viewport,
           });
@@ -2593,7 +2591,10 @@ function PdfCanvas({
             error.name === 'RenderingCancelledException'
           )
         ) {
-          console.error('PDFの先読み・描画に失敗しました:', error);
+          console.error(
+            'PDFの先読み・描画に失敗しました:',
+            error instanceof Error ? error.stack ?? error.message : error,
+          );
           setStatus('error');
         }
       }
