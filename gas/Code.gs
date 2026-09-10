@@ -120,6 +120,9 @@ function doPost(e) {
       case 'deleteStore':
         return handleDeleteStore(payload);
 
+      case 'recordStoreLogin':
+        return handleRecordStoreLogin(payload);
+
       case 'initDatabase':
         return handleInitDatabase();
 
@@ -207,7 +210,17 @@ function getOrCreateSheet(sheetName) {
 function initializeSheetHeader(sheet, sheetName) {
   switch (sheetName) {
     case SHEET_NAMES.STORES:
-      sheet.appendRow(['id', 'code', 'name', 'area', 'createdAt', 'updatedAt']);
+      sheet.appendRow([
+        'id',
+        'code',
+        'name',
+        'area',
+        'createdAt',
+        'updatedAt',
+        'passcode',
+        'passwordUpdatedAt',
+        'lastLoginAt',
+      ]);
       break;
     case SHEET_NAMES.MENUS:
       sheet.appendRow([
@@ -309,6 +322,7 @@ function handleGetMenus() {
  */
 function getAllStores() {
   const sheet = getOrCreateSheet(SHEET_NAMES.STORES);
+  ensureStoreMetadataColumns(sheet);
   const rows = sheet.getDataRange().getValues();
   if (rows.length <= 1) return [];
 
@@ -317,6 +331,9 @@ function getAllStores() {
   const codeIdx = headers.indexOf('code');
   const nameIdx = headers.indexOf('name');
   const areaIdx = headers.indexOf('area');
+  const passcodeIdx = headers.indexOf('passcode');
+  const passwordUpdatedAtIdx = headers.indexOf('passwordUpdatedAt');
+  const lastLoginAtIdx = headers.indexOf('lastLoginAt');
 
   const stores = [];
   for (let i = 1; i < rows.length; i++) {
@@ -327,6 +344,9 @@ function getAllStores() {
       code: String(row[codeIdx] || ''),
       name: String(row[nameIdx] || ''),
       area: String(row[areaIdx] || '大阪'),
+      passcode: String(row[passcodeIdx] || '1234'),
+      passwordUpdatedAt: formatOptionalDateValue(row[passwordUpdatedAtIdx]),
+      lastLoginAt: formatOptionalDateValue(row[lastLoginAtIdx]),
     });
   }
   return stores;
@@ -738,12 +758,14 @@ function handleCreateStore(payload) {
   }
 
   const sheet = getOrCreateSheet(SHEET_NAMES.STORES);
+  ensureStoreMetadataColumns(sheet);
   const now = Utilities.formatDate(
     new Date(),
     Session.getScriptTimeZone() || 'Asia/Tokyo',
     'yyyy-MM-dd',
   );
-  sheet.appendRow([id, code, name, area, now, now]);
+  const passcode = String(payload.passcode || '1234');
+  sheet.appendRow([id, code, name, area, now, now, passcode, now, '']);
 
   return createJsonResponse({
     success: true,
@@ -752,8 +774,75 @@ function handleCreateStore(payload) {
       code: code,
       name: name,
       area: area,
+      passcode: passcode,
+      passwordUpdatedAt: now,
+      lastLoginAt: '',
     },
   });
+}
+
+function handleRecordStoreLogin(payload) {
+  const storeId = String(payload.storeId || '');
+  const passcode = String(payload.passcode || '');
+  if (!storeId) return createErrorResponse('店舗IDが指定されていません', 400);
+
+  const sheet = getOrCreateSheet(SHEET_NAMES.STORES);
+  ensureStoreMetadataColumns(sheet);
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows[0];
+  const idIdx = headers.indexOf('id');
+  const passcodeIdx = headers.indexOf('passcode');
+  const lastLoginAtIdx = headers.indexOf('lastLoginAt');
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][idIdx]) !== storeId) continue;
+    const currentPasscode = String(rows[i][passcodeIdx] || '1234');
+    if (passcode !== currentPasscode) {
+      return createErrorResponse('パスコードが正しくありません', 401);
+    }
+    const now = Utilities.formatDate(
+      new Date(),
+      Session.getScriptTimeZone() || 'Asia/Tokyo',
+      "yyyy-MM-dd'T'HH:mm:ssXXX",
+    );
+    sheet.getRange(i + 1, lastLoginAtIdx + 1).setValue(now);
+    const stores = getAllStores();
+    const updatedStore = stores.find(function (store) {
+      return store.id === storeId;
+    });
+    return createJsonResponse({ success: true, data: updatedStore });
+  }
+
+  return createErrorResponse('店舗が見つかりません', 404);
+}
+
+function ensureStoreMetadataColumns(sheet) {
+  const required = ['passcode', 'passwordUpdatedAt', 'lastLoginAt'];
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  required.forEach(function (name) {
+    if (headers.indexOf(name) === -1) {
+      headers.push(name);
+      sheet.getRange(1, headers.length).setValue(name);
+    }
+  });
+
+  const values = sheet.getDataRange().getValues();
+  const passcodeIdx = headers.indexOf('passcode');
+  const passwordUpdatedAtIdx = headers.indexOf('passwordUpdatedAt');
+  const createdAtIdx = headers.indexOf('createdAt');
+  for (let i = 1; i < values.length; i++) {
+    if (!values[i][passcodeIdx])
+      sheet.getRange(i + 1, passcodeIdx + 1).setValue('1234');
+    if (!values[i][passwordUpdatedAtIdx]) {
+      sheet
+        .getRange(i + 1, passwordUpdatedAtIdx + 1)
+        .setValue(values[i][createdAtIdx] || new Date());
+    }
+  }
+}
+
+function formatOptionalDateValue(value) {
+  return value ? formatDateValue(value) : '';
 }
 
 function handleDeleteStore(payload) {
@@ -931,7 +1020,7 @@ function handleInitDatabase() {
     'yyyy-MM-dd',
   );
   initialStores.forEach((s) =>
-    storeSheet.appendRow([s[0], s[1], s[2], s[3], now, now]),
+    storeSheet.appendRow([s[0], s[1], s[2], s[3], now, now, '1234', now, '']),
   );
 
   // 2. メニューシート

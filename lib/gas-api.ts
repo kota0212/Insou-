@@ -12,6 +12,9 @@ export interface GasStore {
   code: string;
   name: string;
   area: string;
+  passcode: string;
+  passwordUpdatedAt: string;
+  lastLoginAt: string;
 }
 
 export interface GasMenu {
@@ -295,6 +298,17 @@ export async function createGasStore(params: {
  */
 export async function deleteGasStore(storeId: string): Promise<void> {
   await gasPostRequest('deleteStore', { id: storeId });
+}
+
+/** MVP店舗ログインを記録し、管理画面の最終ログイン日時へ反映する。 */
+export async function recordGasStoreLogin(
+  storeId: string,
+  passcode: string,
+): Promise<GasStore> {
+  return await gasPostRequest<GasStore>('recordStoreLogin', {
+    storeId,
+    passcode,
+  });
 }
 
 /**

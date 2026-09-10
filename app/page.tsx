@@ -71,6 +71,7 @@ import {
   deleteGasMenu,
   createGasStore,
   deleteGasStore,
+  recordGasStoreLogin,
 } from '@/lib/gas-api';
 
 export type Screen =
@@ -81,7 +82,15 @@ export type Screen =
   | 'store-list'
   | 'viewer';
 
-export type Store = { id: string; code: string; name: string; area: string };
+export type Store = {
+  id: string;
+  code: string;
+  name: string;
+  area: string;
+  passcode?: string;
+  passwordUpdatedAt?: string;
+  lastLoginAt?: string;
+};
 
 export type MenuPdf = {
   id: string;
@@ -144,6 +153,20 @@ const formatDate = (date: string) => {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
+    }).format(new Date(date));
+  } catch {
+    return date;
+  }
+};
+
+const formatDateTime = (date: string) => {
+  try {
+    return new Intl.DateTimeFormat('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
     }).format(new Date(date));
   } catch {
     return date;
@@ -480,9 +503,19 @@ export default function HomePage() {
         apiStatus={apiStatus}
         errorMessage={errorMessage}
         onRetry={() => void loadData()}
-        onStoreLogin={(selectedId) => {
+        onStoreLogin={async (selectedId, passcode) => {
           setStoreId(selectedId);
-          setScreen('store-list');
+          if (isGasConfigured()) {
+            await recordGasStoreLogin(selectedId, passcode);
+          }
+          const assignedMenu = menus.find((menu) =>
+            menu.storeIds.includes(selectedId),
+          );
+          if (assignedMenu) {
+            await handleOpenViewer(assignedMenu.id, 'login');
+          } else {
+            setScreen('store-list');
+          }
         }}
         onAdminLogin={() => setScreen('admin-list')}
       />
@@ -660,7 +693,7 @@ function UnifiedLogin({
   apiStatus: ApiStatus;
   errorMessage?: string;
   onRetry?: () => void;
-  onStoreLogin: (storeId: string) => void;
+  onStoreLogin: (storeId: string, passcode: string) => Promise<void>;
   onAdminLogin: () => void;
 }) {
   const [storeCode, setStoreCode] = useState('KS-01');
@@ -678,11 +711,21 @@ function UnifiedLogin({
       s.name.toLowerCase().includes(trimmed),
   );
 
-  const handleStoreSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
+  const handleStoreSubmit = async (
+    e: React.SyntheticEvent<HTMLFormElement>,
+  ) => {
     e.preventDefault();
     if (matchedStore) {
-      setStoreLoginError('');
-      onStoreLogin(matchedStore.id);
+      try {
+        setStoreLoginError('');
+        await onStoreLogin(matchedStore.id, storePasscode);
+      } catch (error) {
+        setStoreLoginError(
+          error instanceof Error
+            ? error.message
+            : 'ログイン情報を確認してください。',
+        );
+      }
     } else {
       setStoreLoginError('店舗コードを確認してください。');
     }
@@ -1185,6 +1228,12 @@ function AdminStoreManagement({
                     <TableHead className="text-xs text-slate-500">
                       配信中メニュー
                     </TableHead>
+                    <TableHead className="text-xs text-slate-500">
+                      ログイン状況
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-500">
+                      パスワード
+                    </TableHead>
                     <TableHead className="pr-6 text-right text-xs text-slate-500">
                       操作
                     </TableHead>
@@ -1214,6 +1263,38 @@ function AdminStoreManagement({
                           <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800">
                             {assignedCount} 件配信中
                           </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                                store.lastLoginAt
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-slate-100 text-slate-500'
+                              }`}
+                            >
+                              {store.lastLoginAt
+                                ? 'ログイン済み'
+                                : '未ログイン'}
+                            </span>
+                            <p className="whitespace-nowrap text-[11px] text-slate-500">
+                              最終:{' '}
+                              {store.lastLoginAt
+                                ? formatDateTime(store.lastLoginAt)
+                                : '記録なし'}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <p className="font-mono text-sm font-bold text-slate-800">
+                            {store.passcode || '1234'}
+                          </p>
+                          <p className="whitespace-nowrap text-[11px] text-slate-500">
+                            更新:{' '}
+                            {store.passwordUpdatedAt
+                              ? formatDateTime(store.passwordUpdatedAt)
+                              : '記録なし'}
+                          </p>
                         </TableCell>
                         <TableCell className="pr-6 text-right">
                           <Button
