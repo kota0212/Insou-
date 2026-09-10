@@ -180,6 +180,8 @@ export default function HomePage() {
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState('');
   const [syncProgress, setSyncProgress] = useState({ complete: 0, total: 0 });
+  const [isPrototypeAdminSession, setIsPrototypeAdminSession] =
+    useState(false);
   const didResumeSessionRef = useRef(false);
 
   // 認証済みの場合だけSupabaseから軽量メタデータを取得する。
@@ -322,6 +324,8 @@ export default function HomePage() {
   }) => {
     setIsSubmitting(true);
     try {
+      if (isPrototypeAdminSession)
+        throw new Error('試作モードでは保存できません');
       if (isSupabaseConfigured()) {
         if (activeId) {
           const updated = await updateSupabaseMenu({
@@ -364,6 +368,8 @@ export default function HomePage() {
   const handleDeleteMenu = async (id: string) => {
     setIsSubmitting(true);
     try {
+      if (isPrototypeAdminSession)
+        throw new Error('試作モードでは削除できません');
       if (!isSupabaseConfigured())
         throw new Error('Supabaseの接続設定が必要です');
       await deleteSupabaseMenu(id);
@@ -382,6 +388,8 @@ export default function HomePage() {
   const handleAddStore = async (newStore: Store) => {
     setIsSubmitting(true);
     try {
+      if (isPrototypeAdminSession)
+        throw new Error('試作モードでは店舗を追加できません');
       if (isSupabaseConfigured()) {
         const created = await createSupabaseStore(newStore);
         setStores((prev) => [...prev, created]);
@@ -399,6 +407,8 @@ export default function HomePage() {
   const handleDeleteStore = async (delId: string) => {
     setIsSubmitting(true);
     try {
+      if (isPrototypeAdminSession)
+        throw new Error('試作モードでは店舗を削除できません');
       if (!isSupabaseConfigured())
         throw new Error('Supabaseの接続設定が必要です');
       await deleteSupabaseStore(delId);
@@ -566,7 +576,10 @@ export default function HomePage() {
             throw new Error('Supabaseの接続設定が必要です');
           const selected = stores.find((store) => store.id === selectedId);
           if (!selected) throw new Error('店舗コードを確認してください');
-          await signInStore(selected.code, passcode);
+          await signInStore(
+            selected.code,
+            prototypeMode ? prototypeStorePin : passcode,
+          );
           const data = await fetchSupabaseInitData();
           void recordStoreLogin().catch((error) =>
             console.warn('ログイン日時を記録できませんでした:', error),
@@ -577,7 +590,21 @@ export default function HomePage() {
         onAdminLogin={async (email, password) => {
           if (!isSupabaseConfigured())
             throw new Error('Supabaseの接続設定が必要です');
-          await signInAdmin(email, password);
+          if (prototypeMode && !prototypeAdminPassword) {
+            // 試作モードでは管理者の入力値やAuthアカウントの有無に依存せず、
+            // 管理画面の導線・表示を確認できる。更新操作は実行しない。
+            setIsPrototypeAdminSession(true);
+            setStores(initialStores);
+            setMenus([]);
+            setApiStatus('ready');
+            setScreen('admin-list');
+            return;
+          }
+          await signInAdmin(
+            prototypeMode ? prototypeAdminEmail : email,
+            prototypeMode ? prototypeAdminPassword : password,
+          );
+          setIsPrototypeAdminSession(false);
           const data = await fetchSupabaseInitData();
           setStores(data.stores);
           setMenus(data.menus);
@@ -652,6 +679,7 @@ export default function HomePage() {
       }}
       onLogout={() => {
         void signOut();
+        setIsPrototypeAdminSession(false);
         setActiveId('');
         setScreen('login');
       }}
@@ -662,6 +690,12 @@ export default function HomePage() {
         errorMessage={errorMessage}
         onRetry={() => void loadData()}
       />
+      {isPrototypeAdminSession && (
+        <div className="mx-6 mt-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <strong>試作モードの管理画面です。</strong>{' '}
+          認証・保存を伴う操作は行わず、画面遷移と表示のみ確認できます。
+        </div>
+      )}
 
       {screen === 'admin-new' ? (
         <NewPdfForm
@@ -818,14 +852,25 @@ function UnifiedLogin({
     e: React.SyntheticEvent<HTMLFormElement>,
   ) => {
     e.preventDefault();
-    if (matchedStore) {
-      if (matchedStore.passcode && storePasscode !== matchedStore.passcode) {
+    const effectiveStoreCode = prototypeMode ? prototypeStoreCode : storeCode;
+    const effectivePasscode = prototypeMode
+      ? prototypeStorePin
+      : storePasscode;
+    const effectiveMatchedStore = stores.find(
+      (store) => store.code?.toLowerCase() === effectiveStoreCode.trim().toLowerCase(),
+    );
+
+    if (effectiveMatchedStore) {
+      if (
+        effectiveMatchedStore.passcode &&
+        effectivePasscode !== effectiveMatchedStore.passcode
+      ) {
         setStoreLoginError('パスコードが正しくありません。');
         return;
       }
       try {
         setStoreLoginError('');
-        await onStoreLogin(matchedStore.id, storePasscode);
+        await onStoreLogin(effectiveMatchedStore.id, effectivePasscode);
       } catch (error) {
         setStoreLoginError(
           error instanceof Error
@@ -845,7 +890,7 @@ function UnifiedLogin({
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
             <strong>試作モード</strong>
             <span className="ml-2">
-              検証用のログイン情報を入力済みです。ログインボタンだけで開始できます。
+              入力内容に関係なく、ログインボタンだけで検証用アカウントへ開始できます。
             </span>
           </div>
         )}
@@ -908,7 +953,7 @@ function UnifiedLogin({
                   }}
                   placeholder="例：KS-01"
                   className="h-12 rounded-xl text-base font-bold uppercase tracking-wider text-slate-900"
-                  required
+                  required={!prototypeMode}
                 />
                 <div className="mt-1.5 min-h-5">
                   {matchedStore ? (
@@ -940,7 +985,7 @@ function UnifiedLogin({
                   onChange={(e) => setStorePasscode(e.target.value)}
                   placeholder="••••"
                   className="h-12 rounded-xl text-base tracking-widest"
-                  required
+                  required={!prototypeMode}
                 />
               </div>
 
@@ -994,7 +1039,10 @@ function UnifiedLogin({
                 e.preventDefault();
                 try {
                   setAdminLoginError('');
-                  await onAdminLogin(adminEmail, adminPass);
+                  await onAdminLogin(
+                    prototypeMode ? prototypeAdminEmail : adminEmail,
+                    prototypeMode ? prototypeAdminPassword : adminPass,
+                  );
                 } catch (error) {
                   setAdminLoginError(
                     error instanceof Error
@@ -1015,7 +1063,7 @@ function UnifiedLogin({
                   onChange={(e) => setAdminEmail(e.target.value)}
                   placeholder="admin@example.com"
                   className="h-11 rounded-xl"
-                  required
+                  required={!prototypeMode}
                 />
               </div>
 
@@ -1029,7 +1077,7 @@ function UnifiedLogin({
                   onChange={(e) => setAdminPass(e.target.value)}
                   placeholder="••••••••"
                   className="h-11 rounded-xl"
-                  required
+                  required={!prototypeMode}
                 />
               </div>
 
