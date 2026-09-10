@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   Building2,
   Check,
-  ChevronLeft,
   ChevronRight,
   Eye,
   FilePlus2,
@@ -264,7 +263,7 @@ export default function HomePage() {
     if (targetMenu && !targetMenu.fileUrl && isGasConfigured()) {
       setIsPdfLoading(true);
       try {
-        const dataUrl = await fetchGasMenuPdf(menuId);
+        const dataUrl = await fetchGasMenuPdf(menuId, targetMenu.updatedAt);
         setMenus((prev) =>
           prev.map((m) => (m.id === menuId ? { ...m, fileUrl: dataUrl } : m)),
         );
@@ -483,22 +482,14 @@ export default function HomePage() {
         onRetry={() => void loadData()}
         onStoreLogin={(selectedId) => {
           setStoreId(selectedId);
-          const assignedMenu = menus.find((menu) =>
-            menu.storeIds.includes(selectedId),
-          );
-          if (assignedMenu) {
-            void handleOpenViewer(assignedMenu.id, 'login');
-          } else {
-            // 未配信店舗のみ空状態を表示する。
-            setScreen('store-list');
-          }
+          setScreen('store-list');
         }}
         onAdminLogin={() => setScreen('admin-list')}
       />
     );
   }
 
-  // 2. 未配信店舗の空状態（配信済みの場合はログイン直後にビューアーへ遷移）
+  // 2. 自店舗向けメニュー一覧
   if (screen === 'store-list') {
     return (
       <StoreMenuList
@@ -527,7 +518,6 @@ export default function HomePage() {
   return (
     <AdminShell
       current={screen}
-      apiStatus={apiStatus}
       onNavigate={(next) => {
         if (next === 'admin-new') setActiveId('');
         setScreen(next);
@@ -753,7 +743,7 @@ function UnifiedLogin({
                 店舗端末モード
               </h1>
               <p className="mt-1 text-xs text-slate-500">
-                店舗コードとパスコードを入力して、割り当て済みメニューを開きます。
+                店舗コードとパスコードを入力して、自店舗向けメニューを確認します。
               </p>
             </div>
 
@@ -832,7 +822,7 @@ function UnifiedLogin({
               </div>
 
               <p className="text-[11px] text-amber-700 bg-amber-50/80 border border-amber-200/60 rounded-xl p-2.5">
-                ※MVPデモのため、入力済みのまま「店舗端末としてログイン」を押すだけで割り当て済みメニューが開きます。
+                ※MVPデモのため、入力済みのまま「店舗端末としてログイン」を押すだけで自店舗向け一覧が開きます。
               </p>
 
               <Button
@@ -914,13 +904,11 @@ function UnifiedLogin({
 // ==========================================
 function AdminShell({
   current,
-  apiStatus,
   onNavigate,
   onLogout,
   children,
 }: {
   current: Screen;
-  apiStatus: ApiStatus;
   onNavigate: (s: Screen) => void;
   onLogout: () => void;
   children: React.ReactNode;
@@ -2124,8 +2112,6 @@ function PdfViewer({
 
     const deltaX = event.clientX - dragStartRef.current.x;
     const deltaY = event.clientY - dragStartRef.current.y;
-    const dist = Math.hypot(deltaX, deltaY);
-
     setIsPanning(false);
 
     if (
@@ -2233,16 +2219,22 @@ function PdfCanvas({
   page: number;
   onLoaded: (pages: number) => void;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const currentPageRef = useRef(page);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(
     'loading',
   );
 
   useEffect(() => {
+    currentPageRef.current = page;
+  }, [page]);
+
+  useEffect(() => {
     let cancelled = false;
-    let renderTask:
-      | { cancel: () => void; promise: Promise<unknown> }
-      | undefined;
+    const renderTasks: Array<{
+      cancel: () => void;
+      promise: Promise<unknown>;
+    }> = [];
     let documentTask: { destroy: () => Promise<void> } | undefined;
 
     const render = async () => {
@@ -2265,20 +2257,32 @@ function PdfCanvas({
         if (cancelled) return;
 
         onLoaded(pdf.numPages);
-        const pdfPage = await pdf.getPage(Math.min(page, pdf.numPages));
-        const viewport = pdfPage.getViewport({ scale: 2 });
-        const canvas = canvasRef.current;
-        const context = canvas?.getContext('2d');
-        if (!canvas || !context || cancelled) return;
+        const container = containerRef.current;
+        if (!container) return;
+        container.replaceChildren();
 
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        renderTask = pdfPage.render({
-          canvas,
-          canvasContext: context,
-          viewport,
-        });
-        await renderTask.promise;
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          const pdfPage = await pdf.getPage(pageNumber);
+          const viewport = pdfPage.getViewport({ scale: 2 });
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          if (!context || cancelled) return;
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.className = 'pdf-canvas';
+          canvas.dataset.page = String(pageNumber);
+          canvas.style.display =
+            pageNumber === currentPageRef.current ? 'block' : 'none';
+          canvas.style.height = 'min(78vh, 880px)';
+          container.appendChild(canvas);
+          const task = pdfPage.render({
+            canvas,
+            canvasContext: context,
+            viewport,
+          });
+          renderTasks.push(task);
+          await task.promise;
+        }
         if (!cancelled) setStatus('ready');
       } catch (error) {
         if (
@@ -2288,6 +2292,7 @@ function PdfCanvas({
             error.name === 'RenderingCancelledException'
           )
         ) {
+          console.error('PDFの先読み・描画に失敗しました:', error);
           setStatus('error');
         }
       }
@@ -2296,17 +2301,27 @@ function PdfCanvas({
     void render();
     return () => {
       cancelled = true;
-      renderTask?.cancel();
+      for (const task of renderTasks) task.cancel();
       void documentTask?.destroy();
     };
-  }, [fileUrl, page, onLoaded]);
+  }, [fileUrl, onLoaded]);
+
+  useEffect(() => {
+    const canvases =
+      containerRef.current?.querySelectorAll<HTMLCanvasElement>(
+        'canvas[data-page]',
+      );
+    canvases?.forEach((canvas) => {
+      canvas.style.display =
+        canvas.dataset.page === String(page) ? 'block' : 'none';
+    });
+  }, [page]);
 
   return (
     <div className="pdf-canvas-wrap">
-      <canvas
-        ref={canvasRef}
-        className={`pdf-canvas ${status === 'ready' ? 'opacity-100' : 'opacity-0'}`}
-        style={{ height: 'min(78vh, 880px)' }}
+      <div
+        ref={containerRef}
+        className={status === 'ready' ? 'opacity-100' : 'opacity-0'}
       />
       {status === 'loading' && (
         <p className="pdf-status">PDFを描画しています...</p>

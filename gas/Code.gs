@@ -404,10 +404,10 @@ function formatDateValue(val) {
     return Utilities.formatDate(
       val,
       Session.getScriptTimeZone() || 'Asia/Tokyo',
-      'yyyy-MM-dd',
+      "yyyy-MM-dd'T'HH:mm:ssXXX",
     );
   }
-  return String(val).slice(0, 10);
+  return String(val);
 }
 
 /**
@@ -521,7 +521,7 @@ function handleCreateMenu(payload) {
   const now = Utilities.formatDate(
     new Date(),
     Session.getScriptTimeZone() || 'Asia/Tokyo',
-    'yyyy-MM-dd',
+    "yyyy-MM-dd'T'HH:mm:ssXXX",
   );
 
   // メニューシートへ追加
@@ -643,7 +643,7 @@ function handleUpdateMenu(payload) {
   const today = Utilities.formatDate(
     new Date(),
     Session.getScriptTimeZone() || 'Asia/Tokyo',
-    'yyyy-MM-dd',
+    "yyyy-MM-dd'T'HH:mm:ssXXX",
   );
 
   // スプレッドシート更新
@@ -798,16 +798,10 @@ function saveMenuStoreAssignments(menuId, storeIds) {
   const sheet = getOrCreateSheet(SHEET_NAMES.MENU_STORES);
   const rows = sheet.getDataRange().getValues();
   const menuIdIdx = rows[0].indexOf('menuId');
-  const storeIdIdx = rows[0].indexOf('storeId');
-  const targetStoreIds = storeIds.map(String);
 
-  // このメニューの旧割当と、対象店舗に紐づく他メニューを削除する。
-  // 店舗端末はログイン直後に1件だけ開くため、1店舗1メニューを保証する。
+  // 編集対象メニューの旧割当だけを削除し、他メニューの割当は維持する。
   for (let i = rows.length - 1; i >= 1; i--) {
-    if (
-      String(rows[i][menuIdIdx]) === String(menuId) ||
-      targetStoreIds.indexOf(String(rows[i][storeIdIdx])) !== -1
-    ) {
+    if (String(rows[i][menuIdIdx]) === String(menuId)) {
       sheet.deleteRow(i + 1);
     }
   }
