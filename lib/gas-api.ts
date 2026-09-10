@@ -24,7 +24,7 @@ export interface GasMenu {
   createdAt: string;
   updatedAt: string;
   storeIds: string[];
-  fileUrl?: string; // クライアント側で取得・キャッシュしたPDFデータURL
+  fileUrl?: string; // 管理画面で選択中のPDFデータURL
 }
 
 export interface GasInitDataResponse {
@@ -45,7 +45,28 @@ interface GasEnvelope<T> {
 }
 
 // PDFデータのインメモリキャッシュ（セッション中の不要な再フェッチを防止）
-const pdfCache = new Map<string, string>();
+const pdfCache = new Map<string, ArrayBuffer>();
+
+function isPdfData(data: ArrayBuffer): boolean {
+  if (data.byteLength < 5) return false;
+  const header = new Uint8Array(data, 0, 5);
+  return String.fromCharCode(...header) === '%PDF-';
+}
+
+function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
+  const comma = dataUrl.indexOf(',');
+  if (comma < 0) throw new Error('PDFデータの形式が不正です');
+  const metadata = dataUrl.slice(0, comma);
+  const payload = dataUrl.slice(comma + 1);
+  const binary = metadata.includes(';base64')
+    ? atob(payload)
+    : decodeURIComponent(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer;
+}
 
 // MVP用に公開したGAS Web App。公開URLであり秘密情報は含まない。
 const DEFAULT_GAS_WEB_APP_URL =
@@ -182,21 +203,31 @@ export async function fetchGasInitData(): Promise<GasInitDataResponse> {
 export async function fetchGasMenuPdf(
   menuId: string,
   updatedAt: string,
-): Promise<string> {
+  forceRefresh = false,
+): Promise<ArrayBuffer> {
   const cacheKey = `${menuId}:${updatedAt}`;
-  if (pdfCache.has(cacheKey)) {
-    return pdfCache.get(cacheKey)!;
+  if (!forceRefresh && pdfCache.has(cacheKey)) {
+    return pdfCache.get(cacheKey)!.slice(0);
   }
 
-  try {
-    const cachedBlob = await getCachedPdf(menuId, updatedAt);
-    if (cachedBlob) {
-      const localUrl = URL.createObjectURL(cachedBlob);
-      pdfCache.set(cacheKey, localUrl);
-      return localUrl;
+  if (forceRefresh) {
+    pdfCache.delete(cacheKey);
+    try {
+      await removeCachedPdf(menuId);
+    } catch (error) {
+      console.warn('IndexedDBのPDFキャッシュを削除できませんでした:', error);
     }
-  } catch (error) {
-    console.warn('IndexedDBのPDFキャッシュを読み込めませんでした:', error);
+  } else {
+    try {
+      const cachedData = await getCachedPdf(menuId, updatedAt);
+      if (cachedData && isPdfData(cachedData)) {
+        pdfCache.set(cacheKey, cachedData);
+        return cachedData.slice(0);
+      }
+      if (cachedData) await removeCachedPdf(menuId);
+    } catch (error) {
+      console.warn('IndexedDBのPDFキャッシュを読み込めませんでした:', error);
+    }
   }
 
   const res = await gasGetRequest<GasPdfResponse>('getPdf', { menuId });
@@ -204,15 +235,17 @@ export async function fetchGasMenuPdf(
     throw new Error('PDFデータの取得に失敗しました');
   }
 
-  const pdfBlob = await (await fetch(res.dataUrl)).blob();
+  const pdfData = dataUrlToArrayBuffer(res.dataUrl);
+  if (!isPdfData(pdfData)) {
+    throw new Error('取得したファイルは有効なPDFではありません');
+  }
   try {
-    await storeCachedPdf(menuId, updatedAt, pdfBlob);
+    await storeCachedPdf(menuId, updatedAt, pdfData);
   } catch (error) {
     console.warn('PDFをIndexedDBへ保存できませんでした:', error);
   }
-  const localUrl = URL.createObjectURL(pdfBlob);
-  pdfCache.set(cacheKey, localUrl);
-  return localUrl;
+  pdfCache.set(cacheKey, pdfData);
+  return pdfData.slice(0);
 }
 
 /**
@@ -226,16 +259,13 @@ export async function createGasMenu(params: {
 }): Promise<GasMenu> {
   const created = await gasPostRequest<GasMenu>('createMenu', params);
   if (params.pdfBase64) {
-    const blob = await (await fetch(params.pdfBase64)).blob();
+    const data = dataUrlToArrayBuffer(params.pdfBase64);
     try {
-      await storeCachedPdf(created.id, created.updatedAt, blob);
+      await storeCachedPdf(created.id, created.updatedAt, data);
     } catch (error) {
       console.warn('PDFをIndexedDBへ保存できませんでした:', error);
     }
-    pdfCache.set(
-      `${created.id}:${created.updatedAt}`,
-      URL.createObjectURL(blob),
-    );
+    pdfCache.set(`${created.id}:${created.updatedAt}`, data);
   }
   return created;
 }
@@ -252,16 +282,13 @@ export async function updateGasMenu(params: {
 }): Promise<GasMenu> {
   const updated = await gasPostRequest<GasMenu>('updateMenu', params);
   if (params.pdfBase64) {
-    const blob = await (await fetch(params.pdfBase64)).blob();
+    const data = dataUrlToArrayBuffer(params.pdfBase64);
     try {
-      await storeCachedPdf(updated.id, updated.updatedAt, blob);
+      await storeCachedPdf(updated.id, updated.updatedAt, data);
     } catch (error) {
       console.warn('PDFをIndexedDBへ保存できませんでした:', error);
     }
-    pdfCache.set(
-      `${updated.id}:${updated.updatedAt}`,
-      URL.createObjectURL(blob),
-    );
+    pdfCache.set(`${updated.id}:${updated.updatedAt}`, data);
   }
   return updated;
 }

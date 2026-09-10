@@ -96,6 +96,7 @@ export type MenuPdf = {
   id: string;
   title: string;
   fileUrl?: string; // 閲覧時に動的取得または登録時にBase64保持
+  pdfData?: ArrayBuffer; // 閲覧用バイナリ（iPad SafariでBlob URLを使わない）
   fileName?: string;
   createdAt: string;
   updatedAt: string;
@@ -192,6 +193,7 @@ export default function HomePage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPdfLoading, setIsPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState('');
 
   // Google Apps Script から初期データを取得（localStorageは主保存先として使わない）
   const loadData = useCallback(async () => {
@@ -276,22 +278,38 @@ export default function HomePage() {
   }, [menus, stores]);
 
   // PDFビューアーを開く処理（PDF本体をGASから安全に遅延ロード）
-  const handleOpenViewer = async (menuId: string, returnTo: Screen) => {
+  const handleOpenViewer = async (
+    menuId: string,
+    returnTo: Screen,
+    forceRefresh = false,
+  ) => {
     setActiveId(menuId);
     setReturnScreen(returnTo);
     setScreen('viewer');
+    setPdfError('');
 
     const targetMenu = menus.find((m) => m.id === menuId);
     // すでにローカルURLやキャッシュがある場合、またはGAS未設定でモック表示する場合はスキップ
-    if (targetMenu && !targetMenu.fileUrl && isGasConfigured()) {
+    if (
+      targetMenu &&
+      (!targetMenu.pdfData || forceRefresh) &&
+      isGasConfigured()
+    ) {
       setIsPdfLoading(true);
       try {
-        const dataUrl = await fetchGasMenuPdf(menuId, targetMenu.updatedAt);
+        const pdfData = await fetchGasMenuPdf(
+          menuId,
+          targetMenu.updatedAt,
+          forceRefresh,
+        );
         setMenus((prev) =>
-          prev.map((m) => (m.id === menuId ? { ...m, fileUrl: dataUrl } : m)),
+          prev.map((m) => (m.id === menuId ? { ...m, pdfData } : m)),
         );
       } catch (err) {
         console.error('PDF読み込み失敗:', err);
+        setPdfError(
+          err instanceof Error ? err.message : 'PDFの読み込みに失敗しました',
+        );
       } finally {
         setIsPdfLoading(false);
       }
@@ -542,8 +560,34 @@ export default function HomePage() {
       <PdfViewer
         menu={activeMenu}
         isLoadingPdf={isPdfLoading}
+        errorMessage={pdfError}
+        onRetry={() => void handleOpenViewer(activeMenu.id, returnScreen, true)}
         onBack={() => setScreen(returnScreen)}
       />
+    );
+  }
+
+  if (loginMode === 'store') {
+    return (
+      <div className="grid min-h-svh place-items-center bg-[#15130f] p-6 text-[#e8dcc5]">
+        <div className="max-w-md text-center">
+          <AlertCircle className="mx-auto mb-4 size-10 text-[#ba985b]" />
+          <h2 className="font-serif text-xl">メニューを開けませんでした</h2>
+          <p className="mt-2 text-sm text-[#a99c87]">
+            店舗情報を読み直してから、もう一度ログインしてください。
+          </p>
+          <Button
+            className="mt-6 bg-[#ba985b] text-[#15130f]"
+            onClick={() => {
+              setActiveId('');
+              setScreen('login');
+              void loadData();
+            }}
+          >
+            ログイン画面に戻る
+          </Button>
+        </div>
+      </div>
     );
   }
 
@@ -1961,10 +2005,14 @@ function StoreMenuList({
 function PdfViewer({
   menu,
   isLoadingPdf,
+  errorMessage,
+  onRetry,
   onBack,
 }: {
   menu: MenuPdf;
   isLoadingPdf: boolean;
+  errorMessage: string;
+  onRetry: () => void;
   onBack: () => void;
 }) {
   const [page, setPage] = useState(1);
@@ -2267,11 +2315,15 @@ function PdfViewer({
                   PDFを安全に読み込んでいます...
                 </p>
               </div>
-            ) : menu.fileUrl ? (
+            ) : errorMessage ? (
+              <PdfLoadError message={errorMessage} onRetry={onRetry} />
+            ) : menu.pdfData || menu.fileUrl ? (
               <PdfCanvas
+                pdfData={menu.pdfData}
                 fileUrl={menu.fileUrl}
                 page={page}
                 onLoaded={setTotal}
+                onRetry={onRetry}
               />
             ) : (
               <MockPdfPage menu={menu} page={page} />
@@ -2288,17 +2340,44 @@ function PdfViewer({
   );
 }
 
+function PdfLoadError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="flex min-h-[400px] flex-col items-center justify-center px-6 text-center text-[#e8dcc5]">
+      <AlertCircle className="mb-4 size-10 text-[#ba985b]" />
+      <p className="font-serif text-lg">PDFを表示できませんでした</p>
+      <p className="mt-2 max-w-sm text-sm text-[#a99c87]">{message}</p>
+      <Button
+        onClick={onRetry}
+        className="mt-6 bg-[#ba985b] text-[#15130f] hover:bg-[#c9aa6d]"
+      >
+        <RefreshCw className="mr-2 size-4" />
+        もう一度読み込む
+      </Button>
+    </div>
+  );
+}
+
 // ==========================================
 // 実際のPDFレンダラー (PdfCanvas)
 // ==========================================
 function PdfCanvas({
+  pdfData,
   fileUrl,
   page,
   onLoaded,
+  onRetry,
 }: {
-  fileUrl: string;
+  pdfData?: ArrayBuffer;
+  fileUrl?: string;
   page: number;
   onLoaded: (pages: number) => void;
+  onRetry: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(page);
@@ -2327,9 +2406,16 @@ function PdfCanvas({
           import.meta.url,
         ).toString();
 
-        const bytes = new Uint8Array(
-          await (await fetch(fileUrl)).arrayBuffer(),
-        );
+        const source = pdfData
+          ? pdfData.slice(0)
+          : await (await fetch(fileUrl!)).arrayBuffer();
+        const bytes = new Uint8Array(source);
+        if (
+          bytes.length < 5 ||
+          String.fromCharCode(...bytes.subarray(0, 5)) !== '%PDF-'
+        ) {
+          throw new Error('無効なPDFデータです');
+        }
         const loadingTask = pdfjs.getDocument({
           data: bytes,
         });
@@ -2342,9 +2428,28 @@ function PdfCanvas({
         if (!container) return;
         container.replaceChildren();
 
-        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+        const firstPage = Math.min(currentPageRef.current, pdf.numPages);
+        const pageOrder = [
+          firstPage,
+          ...Array.from(
+            { length: pdf.numPages },
+            (_, index) => index + 1,
+          ).filter((pageNumber) => pageNumber !== firstPage),
+        ];
+
+        for (const pageNumber of pageOrder) {
           const pdfPage = await pdf.getPage(pageNumber);
-          const viewport = pdfPage.getViewport({ scale: 2 });
+          const baseViewport = pdfPage.getViewport({ scale: 1 });
+          const deviceScale = Math.min(window.devicePixelRatio || 1, 1.5);
+          const maxPixels = 8_000_000;
+          const pixelScaleLimit = Math.sqrt(
+            maxPixels / (baseViewport.width * baseViewport.height),
+          );
+          const renderScale = Math.max(
+            1,
+            Math.min(deviceScale, pixelScaleLimit),
+          );
+          const viewport = pdfPage.getViewport({ scale: renderScale });
           const canvas = document.createElement('canvas');
           const context = canvas.getContext('2d');
           if (!context || cancelled) return;
@@ -2363,6 +2468,12 @@ function PdfCanvas({
           });
           renderTasks.push(task);
           await task.promise;
+          if (pageNumber === firstPage && !cancelled) setStatus('ready');
+
+          // iPad Safariのメインスレッドとメモリを一度に占有しない。
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 0);
+          });
         }
         if (!cancelled) setStatus('ready');
       } catch (error) {
@@ -2385,7 +2496,7 @@ function PdfCanvas({
       for (const task of renderTasks) task.cancel();
       void documentTask?.destroy();
     };
-  }, [fileUrl, onLoaded]);
+  }, [fileUrl, onLoaded, pdfData]);
 
   useEffect(() => {
     const canvases =
@@ -2408,7 +2519,13 @@ function PdfCanvas({
         <p className="pdf-status">PDFを描画しています...</p>
       )}
       {status === 'error' && (
-        <p className="pdf-status">PDFを表示できませんでした</p>
+        <div className="pdf-status flex flex-col items-center gap-3">
+          <span>PDFを表示できませんでした</span>
+          <Button size="sm" onClick={onRetry}>
+            <RefreshCw className="mr-2 size-4" />
+            もう一度読み込む
+          </Button>
+        </div>
       )}
     </div>
   );

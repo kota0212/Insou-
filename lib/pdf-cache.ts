@@ -1,12 +1,12 @@
 const DATABASE_NAME = 'insou-menu-pdf-cache';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const STORE_NAME = 'pdfs';
 
 interface CachedPdf {
   key: string;
   menuId: string;
   updatedAt: string;
-  blob: Blob;
+  data: ArrayBuffer;
 }
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -36,7 +36,7 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
 export async function getCachedPdf(
   menuId: string,
   updatedAt: string,
-): Promise<Blob | null> {
+): Promise<ArrayBuffer | null> {
   if (typeof indexedDB === 'undefined') return null;
   const database = await openDatabase();
   try {
@@ -44,7 +44,7 @@ export async function getCachedPdf(
     const record = await requestResult<CachedPdf | undefined>(
       transaction.objectStore(STORE_NAME).get(`${menuId}:${updatedAt}`),
     );
-    return record?.blob ?? null;
+    return record?.data ?? null;
   } finally {
     database.close();
   }
@@ -53,7 +53,7 @@ export async function getCachedPdf(
 export async function storeCachedPdf(
   menuId: string,
   updatedAt: string,
-  blob: Blob,
+  data: ArrayBuffer,
 ): Promise<void> {
   if (typeof indexedDB === 'undefined') return;
   const database = await openDatabase();
@@ -68,7 +68,7 @@ export async function storeCachedPdf(
       key: `${menuId}:${updatedAt}`,
       menuId,
       updatedAt,
-      blob,
+      data,
     } satisfies CachedPdf);
     await new Promise<void>((resolve, reject) => {
       transaction.oncomplete = () => resolve();
