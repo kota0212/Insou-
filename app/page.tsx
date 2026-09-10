@@ -760,6 +760,10 @@ function UnifiedLogin({
   ) => {
     e.preventDefault();
     if (matchedStore) {
+      if (matchedStore.passcode && storePasscode !== matchedStore.passcode) {
+        setStoreLoginError('パスコードが正しくありません。');
+        return;
+      }
       try {
         setStoreLoginError('');
         await onStoreLogin(matchedStore.id, storePasscode);

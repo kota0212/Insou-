@@ -331,10 +331,25 @@ export async function deleteGasStore(storeId: string): Promise<void> {
 export async function recordGasStoreLogin(
   storeId: string,
   passcode: string,
-): Promise<GasStore> {
-  return await gasPostRequest<GasStore>('recordStoreLogin', {
-    storeId,
-    passcode,
+): Promise<void> {
+  const baseUrl = getGasWebAppUrl();
+  if (!baseUrl) return;
+
+  // GASはPOST処理後にgoogleusercontent.comへリダイレクトする。
+  // Safariはその応答をCORS/404エラーとして扱うことがあるため、
+  // MVPのログイン日時記録は送信完了だけを確認し、応答本文は読まない。
+  await fetch(baseUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    keepalive: true,
+    headers: {
+      'Content-Type': 'text/plain;charset=utf-8',
+    },
+    body: JSON.stringify({
+      action: 'recordStoreLogin',
+      storeId,
+      passcode,
+    }),
   });
 }
 
