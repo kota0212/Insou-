@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   AlertCircle,
   AlertTriangle,
@@ -17,8 +18,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  ShieldCheck,
-  Store as StoreIcon,
   Trash2,
   UploadCloud,
 } from 'lucide-react';
@@ -154,7 +153,13 @@ const formatDate = (date: string) => {
 
 const shortTitle = (title: string) => title.replace(/\s*20\d{2}年.*$/, '');
 
+type LoginMode = 'store' | 'admin';
+
 export default function HomePage() {
+  const pathname = usePathname();
+  const loginMode: LoginMode = pathname.startsWith('/admin')
+    ? 'admin'
+    : 'store';
   const [screen, setScreen] = useState<Screen>('login');
   const [stores, setStores] = useState<Store[]>(initialStores);
   const [menus, setMenus] = useState<MenuPdf[]>(initialMenus);
@@ -471,6 +476,7 @@ export default function HomePage() {
   if (screen === 'login') {
     return (
       <UnifiedLogin
+        mode={loginMode}
         stores={stores}
         apiStatus={apiStatus}
         errorMessage={errorMessage}
@@ -651,6 +657,7 @@ function GasStatusNotification({
 // 1. 統合ログインコンポーネント (UnifiedLogin)
 // ==========================================
 function UnifiedLogin({
+  mode,
   stores,
   apiStatus,
   errorMessage,
@@ -658,6 +665,7 @@ function UnifiedLogin({
   onStoreLogin,
   onAdminLogin,
 }: {
+  mode: LoginMode;
   stores: Store[];
   apiStatus: ApiStatus;
   errorMessage?: string;
@@ -665,7 +673,6 @@ function UnifiedLogin({
   onStoreLogin: (storeId: string) => void;
   onAdminLogin: () => void;
 }) {
-  const [mode, setMode] = useState<'store' | 'admin'>('store');
   const [storeCode, setStoreCode] = useState('KS-01');
   const [storePasscode, setStorePasscode] = useState('1234');
   const [storeLoginError, setStoreLoginError] = useState('');
@@ -737,34 +744,6 @@ function UnifiedLogin({
               MENU CLOUD SYSTEM (MVP)
             </p>
           </div>
-        </div>
-
-        {/* ログイン種別タブ切り替え */}
-        <div className="mb-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1.5 border border-slate-200">
-          <button
-            type="button"
-            onClick={() => setMode('store')}
-            className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-bold transition ${
-              mode === 'store'
-                ? 'bg-white text-slate-950 shadow-sm'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <StoreIcon className="size-4 text-amber-600" />
-            店舗端末ログイン
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('admin')}
-            className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-bold transition ${
-              mode === 'admin'
-                ? 'bg-white text-blue-700 shadow-sm'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <ShieldCheck className="size-4 text-blue-600" />
-            管理者ログイン
-          </button>
         </div>
 
         {mode === 'store' ? (

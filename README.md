@@ -113,6 +113,9 @@ npm run dev
 
 ブラウザで `http://localhost:3000` を開きます。
 
+- 店舗ログイン: `http://localhost:3000/store/`
+- 管理者ログイン: `http://localhost:3000/admin/`
+
 ---
 
 ## 画面一覧と操作方法
