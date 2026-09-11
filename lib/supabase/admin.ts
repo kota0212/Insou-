@@ -1,0 +1,148 @@
+if (typeof window !== 'undefined') {
+  throw new Error('This module can only be used on the server.');
+}
+
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+
+export class AdminApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+// In-memory rate limiting (sliding window per identifier)
+interface RateLimitRecord {
+  count: number;
+  resetAt: number;
+}
+const rateLimitMap = new Map<string, RateLimitRecord>();
+
+export function checkAdminRateLimit(
+  key: string,
+  limit = 30,
+  windowMs = 60_000,
+): void {
+  const now = Date.now();
+  const record = rateLimitMap.get(key);
+  if (!record || record.resetAt <= now) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+    return;
+  }
+  if (record.count >= limit) {
+    throw new AdminApiError(
+      'リクエスト制限を超過しました。しばらく経ってから再試行してください。',
+      429,
+    );
+  }
+  record.count += 1;
+}
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidUuid(id: unknown): id is string {
+  return typeof id === 'string' && UUID_REGEX.test(id);
+}
+
+const EMAIL_REGEX =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+export function isValidEmail(email: unknown): email is string {
+  return typeof email === 'string' && EMAIL_REGEX.test(email.trim());
+}
+
+export function getClientIp(request: Request): string {
+  return (
+    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown'
+  );
+}
+
+export function auditLog(entry: {
+  action: string;
+  adminUserId?: string;
+  targetId?: string;
+  targetType?: string;
+  ip?: string;
+  status: 'SUCCESS' | 'FAILURE';
+  details?: Record<string, unknown>;
+}): void {
+  // Never log passwords, tokens, or secret keys
+  const safeEntry = {
+    timestamp: new Date().toISOString(),
+    service: 'admin-api',
+    ...entry,
+  };
+  console.info('[AUDIT]', JSON.stringify(safeEntry));
+}
+
+/**
+ * Supabase Secret Key は管理用 Route Handler でのみ利用する。クライアント側の
+ * NEXT_PUBLIC_* 環境変数へは絶対に設定しないこと。漏洩済みとして扱う
+ * legacy service_role key へのfallbackは許可しない。
+ */
+export function getSupabaseAdminClient(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !secretKey) {
+    throw new AdminApiError(
+      '管理APIの設定が未完了です。サーバー環境変数を確認してください。',
+      503,
+    );
+  }
+
+  return createClient(url, secretKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+export interface AdminContext {
+  client: SupabaseClient;
+  adminUserId: string;
+}
+
+export async function requireAdmin(request: Request): Promise<AdminContext> {
+  const token = request.headers
+    .get('authorization')
+    ?.replace(/^Bearer\s+/i, '');
+  if (!token) throw new AdminApiError('ログイン情報がありません。', 401);
+
+  const ip = getClientIp(request);
+  // IP-level rate limiting before expensive auth queries
+  checkAdminRateLimit(`ip:${ip}`, 60, 60_000);
+
+  const client = getSupabaseAdminClient();
+  const { data, error } = await client.auth.getUser(token);
+  if (error || !data.user) {
+    throw new AdminApiError('ログイン情報を確認できませんでした。', 401);
+  }
+
+  const profile = await client
+    .from('user_profiles')
+    .select('role')
+    .eq('user_id', data.user.id)
+    .maybeSingle();
+  if (profile.error || profile.data?.role !== 'admin') {
+    throw new AdminApiError('この操作を行う権限がありません。', 403);
+  }
+
+  // Admin user rate limit
+  checkAdminRateLimit(`user:${data.user.id}`, 30, 60_000);
+
+  return { client, adminUserId: data.user.id };
+}
+
+export function adminApiErrorResponse(error: unknown): Response {
+  if (error instanceof AdminApiError) {
+    return Response.json({ error: error.message }, { status: error.status });
+  }
+  console.error('Admin API error:', error);
+  return Response.json(
+    { error: '管理処理中に問題が発生しました。' },
+    { status: 500 },
+  );
+}

@@ -1,0 +1,554 @@
+INSOU メニュー閲覧システム
+本番運用完成計画（改訂版）
+
+目的
+本書は、100店舗以上で安全・継続的に運用するための設計と実装計画の基準である。今回の対象は計画のみであり、コード、DB、環境変数、外部サービス、本番環境は変更しない。
+
+開発・進捗報告ルール
+- 開発はPhase 0からPhase 5までを順番に進め、未完了Phaseを飛ばして後続Phaseの実装へ進まない。
+- 各Phaseの完了条件を満たし、必要な検証を行ってから次のPhaseへ進む。
+- 各Phaseの完了時には、必ず進捗を報告する。
+- 進捗報告には、実施内容、変更ファイル、検証結果、未解決事項・リスク、次Phaseへ進むために必要な判断または設定を含める。
+- 本番DB変更、秘密情報設定、本番デプロイ、メール送信開始など外部への影響がある操作は、Phase内で必要になった時点で事前に明示し、指示を得てから実施する。
+- 複数のAIエージェントで開発することを前提として、引き継ぎ事項をこのファイルに残してください。
+
+0. 完成目標
+
+店舗スタッフが店舗名を検索して選択し、登録済み店舗メールへ届くワンタイムコードで端末を認証する。認証済み端末は30日間、自店舗向けPDFだけを閲覧できる状態を完成目標とする。
+
+完成条件:
+- PDFはSupabase Private Storageから取得し、IndexedDBへキャッシュする。
+- menuId + updatedAt比較で、変更PDFだけを再取得する。
+- 公開終了・店舗割当解除PDFを次回同期でキャッシュから削除する。
+- 店舗は固定パスワードを共有しない。
+- OTPは1認証要求につき1つ、15分・1回限りで、challenge_idに紐付く。
+- 認証済み端末は30日間利用できる。
+- 管理者は店舗、店舗メール、登録台数、認証端末、PDF公開状態を管理できる。
+- 管理者は端末を個別失効し、店舗単位で一括失効できる。
+- 本番相当環境でRLS、Storage、実機、監視、バックアップ、復旧を検証済みである。
+
+1. 現在のコード・DB・設定を確認した結果
+
+1.1 既存コードで確認できた事実
+
+- Next.js App Routerに/adminと/storeがある。
+- PDFはSupabase Storage bucket「menu-pdfs」からBlobとして取得する。
+- IndexedDB「insou-menu-pdf-cache」にPDF Blobを保存し、menuId + updatedAtで更新判定する。
+- 同期対象外のmenuIdをIndexedDBから削除する実装がある。
+- PDF表示はPDF.jsとCanvasを利用する。
+- migrationファイルにはstores、user_profiles、menus、menu_store_assignments、RLS、Private Storage policyが定義されている。
+- RLS方針は、管理者が全件、店舗が自店舗と自店舗向け公開メニューだけを参照する内容である。
+- 店舗ログインは現在、店舗コードから内部メールアドレスを生成し、Supabase Authの固定パスワードで行う。
+- 管理者ログインはSupabase Authのメール＋パスワードで行う。
+- 管理用Route HandlerはBearer tokenとuser_profiles.role = adminを確認してからservice_roleを利用する設計である。
+- 管理用Route Handlerには店舗・管理者作成、固定パスワード再設定、店舗削除の実装がある。
+- Vercel Production/Previewには公開Supabase URL・anon keyと試作モード変数がある。
+- Vercel Production/PreviewにSUPABASE_SERVICE_ROLE_KEYはない。
+- ローカル.env.localにはSupabase接続値がない。
+
+1.2 未実装または未完了の事項
+
+- OTP、challenge_id、店舗メール送信、30日端末認証は未実装。
+- 店舗検索API、端末台数照合、セキュリティアラート、個別・一括失効は未実装。
+- 管理者招待、無効化、メールによるパスワードリセットは未実装。
+- 管理API・将来のOTP APIについて、入力検証・レート制限・監査ログ・認可テストの完了確認が必要。
+- Vercel Productionの試作モード変数除外と、Verification Authの固定Preview URLへの分離が未完了。
+- Production側のmigration履歴整備、Auth Site URLの本番向け修正は未実施。
+- 監視、バックアップ、障害通知、復旧訓練、実機試験、E2E試験は未整備または未完了。
+- lintは既存UIを含む指摘で失敗しており、型検査とbuildは成功している。
+
+2. 現在の計画で修正が必要な部分
+
+- 旧来の「登録台数分OTPを一括発行して1メールに複数コード」は採用しない。
+- OTPは1要求1コードとし、複数端末も各端末から個別に要求する。
+- 店舗コードを利用者に入力・表示する方式は採用しない。店舗名検索と候補選択を採用する。
+- 端末認証トークンをlocalStorage・IndexedDBへ保存しない。HttpOnly / Secure Cookieを第一候補とする。
+- 一括ログアウト後もオフライン端末のキャッシュを即時削除できない制約を明記する。
+- メール送信基盤とOTP実装を同一Phaseにする。
+- service_roleは認可・入力検証・レート制限を監査後にだけVercelサーバー専用変数へ設定する。
+
+3. 修正後の認証フロー
+
+3.1 店舗検索・OTP認証
+
+1. 利用者が店舗名の一部を入力する。
+2. 2〜3文字以上で検索APIを呼び、最大5〜10件の候補を表示する。
+3. 利用者が店舗を選択する。画面には店舗名だけを表示する。
+4. 「認証コードを送信する」前に確認ダイアログを表示する。
+5. サーバーがchallenge_idとOTPを1件生成し、OTP hashだけを保存する。
+6. 登録店舗メールへOTPを送る。メールアドレスを表示する場合はマスクする。
+7. 端末がOTPとchallenge_idを送信する。
+8. サーバーが期限、未使用状態、challenge_id、失敗回数を原子的に検証する。
+9. 成功時はOTPを使用済みにし、端末セッションを作成してHttpOnly Cookieを設定する。
+10. 失敗時は店舗の存在を明かさない共通メッセージを返す。
+
+3.2 検索API制約
+
+- 店舗名と内部識別に必要な最小限だけを返す。
+- 店舗メール、登録台数、認証端末数、認証状態は返さない。
+- 全店舗一括取得を禁止し、検索文字数、候補数、頻度を制限する。
+- サーバー側で入力値を検証し、検索・OTP要求を監査可能にする。
+- 検索・OTP送信にレート制限を設ける。
+
+3.3 管理者認証
+
+- 管理者はSupabase Authを利用する。
+- 招待メールと初回パスワード設定、標準のパスワード再設定メールを優先する。
+- 管理者無効化、権限確認、監査、退職・異動時の停止を管理する。
+- 管理者認証と店舗端末認証は別の認証・認可境界とする。
+
+4. 修正後の端末管理フロー
+
+- OTP成功時にランダムなdevice_idと端末セッションを発行する。
+- server側にはトークン平文でなくtoken_hashを保存する。
+- ブラウザにはHttpOnly、Secure、適切なSameSite、30日有効期限のCookieを設定する。
+- IPアドレスだけで端末を識別しない。
+- 初回認証、最終アクセス、期限、失効日時、失効理由、任意の端末名を保存する。
+- 期限切れ、Cookie削除、端末交換時はOTP再認証を求める。
+- stores.registered_tablet_countと有効なdevice_id数を比較する。
+- 認証端末数が登録台数超過なら高重要度、下回れば低重要度または確認アラートとする。
+- 台数差分だけでは自動停止しない。管理者が端末一覧・ログから判断する。
+
+5. 修正後の一括ログアウトフロー
+
+5.1 個別ログアウト
+
+1. 管理者が端末一覧から対象を選択する。
+2. 対象セッションにrevoked_atと失効理由を記録する。
+3. 次回以降のAPI・PDFアクセスをサーバー側で拒否する。
+4. オンラインで再度開いた端末は認証画面へ戻し、店舗PDFキャッシュを削除する。
+
+5.2 店舗単位一括ログアウト
+
+1. 管理者が店舗名と対象端末数を確認し、理由を入力する。
+2. 対象店舗の有効端末をすべて失効する。
+3. 未使用OTPをすべて無効化する。
+4. 実行者、日時、店舗、端末数、理由を監査ログへ保存する。
+5. 以後のAPI・PDF取得時に端末セッションを確認して拒否する。
+6. 対象端末はOTP再認証を必要とする。
+
+5.3 推奨方式
+
+個別端末のrevoked_atと、店舗ごとのdevice_session_versionを併用する。端末セッション作成時のversionと店舗の現行versionを比較し、不一致なら一括ログアウト済みとして拒否する。
+
+5.4 IndexedDBの制約
+
+- オフライン端末に保存済みPDFを遠隔で即時削除することはできない。
+- 起動時、一覧取得時、PDF表示前に適切な頻度でセッション有効性をサーバー確認する。
+- 失効を検知したオンライン端末は認証画面へ戻し、対象店舗のPDFキャッシュを削除する。
+- 完全オフライン閲覧は許可しない。ネットワークが利用できず、サーバーで端末セッションを確認できない場合はPDF表示を開始しない。
+
+6. 修正後のDB設計案
+
+6.1 stores（既存拡張）
+- id / code / name / area（既存）
+- store_email
+- registered_tablet_count
+- device_session_version
+- otp_last_requested_at
+
+6.2 store_device_sessions（新規）
+- id、store_id、device_id、token_hash、device_name
+- issued_at、first_authenticated_at、last_accessed_at、expires_at
+- revoked_at、revoked_reason、session_version、created_at、updated_at
+
+6.3 store_otp_challenges（新規）
+- id（challenge_id）、store_id、code_hash
+- requested_at、expires_at、used_at、invalidated_at
+- resend_count、failed_attempt_count、last_failed_at
+- status（issued / used / expired / invalidated / locked）
+
+6.4 security_alerts（新規）
+- id、store_id、device_session_idまたはdevice_id
+- alert_type、severity、occurred_at、details
+- acknowledged_at / by、resolved_at / by、resolution_note
+
+6.5 audit_logs（新規）
+- id、actor_type、actor_id、store_id、action
+- target_type、target_id、occurred_at、metadata
+- OTP平文・秘密情報はmetadataに保存しない。
+
+6.6 必要なDB関数・制約
+
+- OTP challenge発行、OTP検証・使用済み化・端末セッション作成。
+- 個別端末失効、店舗一括失効、未使用OTP無効化、監査ログ作成。
+- 管理者専用の端末数・台数差分・アラート集計。
+- OTP検証はトランザクションまたは原子的更新で競合を防ぐ。
+
+7. 修正が必要なAPI・画面・権限
+
+7.1 API
+- POST /api/store-search
+- POST /api/store-auth/challenges
+- POST /api/store-auth/challenges/{challenge_id}/verify
+- POST /api/store-auth/logout
+- GET /api/store-auth/session
+- 管理者向け: 店舗メール・台数・端末・アラート・個別失効・一括失効
+- 管理者向け: 招待・無効化・パスワードリセット連携
+
+すべてのAPIで入力検証、認可、レート制限、共通エラー、監査ログを扱う。クライアントから渡されたstore_idを単独では信用しない。
+
+7.2 画面
+- 店舗名検索、候補選択、OTP送信確認、OTP入力、期限切れ、再認証画面
+- 店舗管理: 店舗メール、登録台数、認証端末数、差分、アラート
+- 端末一覧: 端末名、管理用device_id、認証・最終アクセス・期限・失効状態
+- 個別・店舗一括ログアウトの確認画面と理由入力
+- 管理者招待、無効化、リセットメール画面
+
+7.3 RLS・Storage policy
+- OTP・端末セッションはクライアント直接書込みを原則禁止し、サーバー経由で扱う。
+- 管理者だけが全店舗の端末・アラート・監査情報を参照・操作できる。
+- 店舗端末は有効な端末セッションがある場合だけ自店舗メニュー・PDFを取得できる。
+- 現行のStorage browser downloadだけで端末失効を強制できるか検証し、必要なら短期Signed URLまたは認可プロキシを採用する。
+
+8. セキュリティアラート
+
+検知対象:
+- 有効端末数の登録台数超過（高）
+- 有効端末数の登録台数未満（低／確認）
+- 短時間の新規端末急増（高）
+- OTP要求集中・OTP失敗超過（高または確認）
+- 失効端末・一括失効後トークンからのアクセス（高）
+- 管理API異常アクセス（高）
+- PDF取得連続失敗（確認）
+
+アラートは判断支援であり、台数差分だけで自動停止しない。高重要度の通知先・対応者をINSOU側と定める。
+
+9. service_role安全化計画
+
+設定前に以下を監査する。
+- service_role使用箇所がサーバー側だけである。
+- NEXT_PUBLIC_、クライアントバンドル、Git、ログに含まれない。
+- 管理APIが管理者セッションとrole = adminを確認する。
+- 一般店舗ユーザーが管理APIを呼べない。
+- store_id・ユーザー・端末の対象をサーバー側で検証する。
+- 管理・OTP APIにレート制限がある。
+- エラーに秘密・内部情報を含めない。
+
+監査完了後のみ、SUPABASE_SERVICE_ROLE_KEYをVercel Production/Previewへサーバー専用として設定する。Developmentには検証用Supabaseの値だけを使用する。
+
+10. 本番・検証環境の方針
+
+- Production、Preview、Developmentを環境変数・Supabase project・メール送信設定で分離する。
+- Previewから本番Supabase、本番メール送信先、本番PDFへ接続しない。
+- migrationは検証SupabaseでRLS試験後に本番へ適用する。
+- 本番migration前にバックアップ、復旧手順、影響範囲、ロールバック可否を記録する。
+- 各環境のStorage bucketはPrivateとし、policyをmigrationで管理する。
+- 本番と検証が同一Supabase projectなら、誤操作・テストデータ混入リスクを避けるため分離を優先する。
+
+11. メール送信基盤とOTP実装
+
+実施順序:
+1. メール送信サービスを費用、到達性、設定難易度、Vercel連携、ログ、バウンス確認で比較する。
+2. 送信ドメイン、SPF、DKIM、DMARCを設定する。
+3. テストメール到達を確認する。
+4. OTP challenge発行、hash保存、メール送信、照合を実装する。
+5. 15分失効、1回利用、再送時旧コード無効化、送信・入力失敗制限を実装する。
+6. 成功時に端末セッションを作成し、30日Cookieを発行する。
+7. バウンス、送信失敗、不正連続要求を監視する。
+
+今回はメールサービスの契約・設定・送信は実行しない。
+
+12. PDF配信・閲覧の検証
+
+- 初回取得、キャッシュ再表示、変更なし、差し替え、新規公開、公開終了、店舗割当追加・解除。
+- IndexedDB削除・破損、オフライン復帰、低速回線、通信断。
+- 大容量・多ページ・複数PDF、長時間利用時のメモリ。
+- iPad Safari、Android Chrome、店舗PC。
+- PDF URL・Storage情報の不要露出、店舗Aが店舗BのPDFを取得できないこと。
+
+技術的制約: ブラウザへ取得して表示したPDFの画面撮影・開発者ツール等による持ち出しを完全には防げない。完全DRMではなく、Private Storage、RLS、通常UIでのダウンロード・共有非提供、端末セッション制御でリスクを下げる。
+
+13. 監視・バックアップ・障害対応
+
+- Vercelエラー、Supabase DB/Auth/Storage、メール送信失敗・バウンス、OTP異常、認証失敗、PDF取得失敗を監視する。
+- 稼働監視と重大アラート通知先を決める。
+- DBバックアップ、Storage復旧、Vercelロールバックを手順化し、復旧訓練する。
+- 管理者退職、店舗メール変更、端末紛失・交換、秘密情報漏えいの対応を文書化する。
+- INSOU側と開発・保守側の責任分界、問い合わせ窓口、初動担当を明確化する。
+
+14. 修正後のPhase構成
+
+Phase移行ルール:
+各Phaseの作業と完了条件を確認し、進捗報告を行ってから次のPhaseへ進む。報告なしに後続Phaseの実装・本番操作を開始しない。
+
+Phase 0: INSOU側との運用確認（完了）
+- 店舗メールと確認担当者、タブレット台数、交換時対応、メール不達時の代替確認。
+- 完全オフライン閲覧、アラート対応者、管理者担当範囲の確定。
+
+Phase 0 意思決定記録（2026-09-11）:
+- 店舗メール: 全店舗共通の共有メールは使用しない。各店舗が保有する個別の店舗メールアドレスをOTP送信先として登録する。
+- タブレット台数: 現時点では未確定で、端末配布前である。registered_tablet_countは配布計画の確定後、店舗ごとに登録する。登録前は台数差分アラートを判定できない。
+- オフライン閲覧: 完全オフライン閲覧は許可しない。アプリ起動時およびPDF表示前にオンラインで端末セッションの有効性を確認できる場合だけ閲覧可能とする。ネットワークが利用できない場合は認証済みでもPDF表示を開始しない。
+- 端末失効後の処理: 端末紛失・個別失効・一括ログアウト後にオンライン復帰した端末は、セッション失効を検知してキャッシュを削除し、OTP再認証へ戻す。
+- OTPメール不達時: 店舗は管理部署へ電話連絡する。管理部署は本人確認・メール状態確認・コード再発行または端末失効を行う運用を別途手順化する。
+- セキュリティアラート: 管理ページを操作する管理部署が確認・対応する。
+- パイロット店舗: 現時点では未定。Phase 5開始前に2〜5店舗を選定する。
+
+Phase 0 完了判定:
+- 認証方式、メール不達時の連絡先、アラート担当、オフライン閲覧方針を確定した。
+- タブレット台数・パイロット店舗はPhase 5開始前の必須入力として残すが、Phase 1の環境・権限設計を開始できる。
+
+Phase 0 残課題:
+- 店舗ごとのメールアドレス一覧、確認担当者、メール変更申請手順を確定する。
+- タブレット調達・配布計画と店舗ごとの登録台数を確定する。
+- パイロット対象店舗と問い合わせ窓口を選定する。
+
+Phase 1: 本番・検証環境と権限設計（実質完了 / Phase 2着手可）
+- Vercel/Supabase環境分離、migration管理、RLS、Storage policy。
+- 管理API認可、service_role安全監査、秘密情報管理。
+
+Phase 1 現在状況（完了済み）:
+- Production / PreviewのVercelデプロイは正常化済み。Git author不一致によるBLOCKEDは解消した。
+- Production / Verification Supabase分離完了。
+  - Production project ref: yzvencvfkltxehcjpgol
+  - Verification project ref: cqlddcxvanwoxpaouzow
+- Vercel Preview / Production分離完了（Vercel ProductionはProduction Supabase、Vercel PreviewはVerification Supabaseを参照）。
+- Verification固定URL・Verification Auth分離完了（Verification SupabaseのAuth Site URL / Redirect URLを固定Preview URLへ設定）。
+- VerificationにはGit管理下のmigrationをCLIで適用し、migration履歴を記録済み。
+- Production実DB、Verification DB、migrationのschema・RLS・Storage policyは一致していることを確認済み。
+- RLS検証・Private Storage検証完了（管理者・割当店舗・未割当店舗・匿名アクセスの権限制御テストをVerificationで実施済み）。
+- service_role監査完了（参照実装はサーバー側限定、ブラウザclientはanon keyのみ、.env.exampleに秘密値なし）。
+- 管理API認証 / validation / rate limit / audit log 完了。
+- Verification資格情報管理完了（.env.verification.local、chmod 600、Git管理外）。
+- Backup / Recovery確認完了。
+
+Phase 1 環境運用方針:
+- Vercel Production → Supabase Production。実店舗・実PDF・実管理者だけを扱う。
+- Vercel Preview → Supabase Verification。Preview検証・テストデータ・テストPDFだけを扱う。
+- Local Development → 原則ローカルSupabase。利用できない場合のみVerificationのDevelopment用データを使い、本番Supabaseへは接続しない。
+- 本番データをVerificationへ通常コピーしない。schema・RLS・Storage policyはmigrationで揃え、検証には匿名化・最小化したテストデータを使用する。
+- 各Supabase projectのStorage bucketはPrivateとし、DB RLSとstorage.objects policyはmigrationで管理する。
+- SUPABASE_SERVICE_ROLE_KEY、OTP用秘密値、メールAPI key等はserver-onlyとし、NEXT_PUBLIC_へ秘密情報を置かない。
+
+## Phase 1 残TODO — Production公開前ゲート
+
+Phase 1の開発・検証基盤は実質完成しており、
+Phase 2以降の開発へ進んでよい。
+
+ただし、以下はProduction公開前までに必ず完了する。
+
+### TODO 1. Production Supabase migration履歴の整合
+
+状態:
+TODO
+
+現状:
+Productionの初期schemaは
+`202609100001_initial_schema.sql`
+と一致しているが、
+初回はSQL Editor等から手動適用されており、
+Supabase CLIのmigration履歴に正式記録されていない。
+
+実施タイミング:
+Phase 2〜4の検証完了後、
+Productionへmigrationを適用する前。
+
+完了条件:
+- Productionの実schemaとmigrationを再確認
+- migration履歴を安全に同期
+- 以降ProductionでもCLIベースのmigration運用が可能
+- dry-run等で意図しないschema変更が発生しないことを確認
+
+Production影響:
+あり
+
+注意:
+内容を再適用してschemaを二重変更するのではなく、
+既存schemaとmigration履歴の整合を取ること。
+
+
+### TODO 2. Production Supabase Auth Site URLの本番化
+
+状態:
+TODO
+
+現状:
+Production SupabaseのAuth Site URLが
+`http://localhost:3000`
+のまま残っている。
+
+実施タイミング:
+Production公開前。
+
+完了条件:
+- Production Auth Site URLが正式な本番URLを参照
+- Redirect URLもProduction用途に限定
+- localhostやVerification URLへの誤遷移がない
+- Verification Auth設定とは完全分離されている
+
+Production影響:
+あり
+
+
+### TODO 3. Production Vercel旧試作環境変数の整理
+
+状態:
+TODO / 要確認
+
+対象例:
+`NEXT_PUBLIC_PROTOTYPE_*`
+など、旧モック・試作運用で利用していた環境変数。
+
+実施タイミング:
+Production公開前。
+
+完了条件:
+- Production環境変数を棚卸し
+- 現行システムで不要なPrototype系変数を削除
+- Productionで必要な環境変数のみ残す
+- 秘密情報がNEXT_PUBLIC_*に入っていないことを確認
+- Production build / deploymentが正常
+
+Production影響:
+あり
+
+
+### TODO 4. Development環境の接続方針確定
+
+状態:
+TODO / 要確認
+
+方針:
+Local DevelopmentからProduction Supabaseへ直接接続しない。
+
+利用可能な接続先:
+1. Local Supabase
+または
+2. Verification Supabase + 検証専用データ
+
+実施タイミング:
+Phase 2開発中〜Production公開前。
+
+完了条件:
+- Local Developmentの接続先が明確
+- Production project refを参照していない
+- Production実データを開発用途に使用しない
+- READMEまたは開発計画に運用方法が明記されている
+
+Production影響:
+なし
+
+
+### TODO 5. 管理API rate limitの共有化
+
+状態:
+TODO
+
+現状:
+Store Auth APIはVerification向けのDB共有・原子的rate limitを使用する。
+一方、管理API側のrate limitはプロセス内Mapであり、Vercelの複数instance間では共有されない。
+
+実施タイミング:
+Production公開前。
+
+完了条件:
+- 管理APIのIP・管理者単位rate limitを共有ストアまたはDBの原子的処理へ移行
+- instance再起動・複数instanceで制限を回避できない
+- 管理APIの既存認可・監査ログを損なわない
+
+Production影響:
+あり
+
+
+### Phase 1 完了判定ルール
+
+現在:
+「実質完了 / Phase 2着手可」
+
+Phase 1を完全完了（100%）とする条件:
+上記Production公開前TODOのうち、
+Phase 1に属する必須項目がすべてDONEとなること。
+
+Phase 2以降のVerification開発は、
+これらのTODOを残したまま進めてよい。
+
+ただしProduction公開前チェックでは
+必ず再確認すること。
+
+
+
+Phase 2: 店舗検索・メール・OTP・端末認証
+- 店舗候補検索、OTPメール、challenge、device_id、30日Cookie。
+- 台数照合、セキュリティアラート、再送・失敗制限。
+
+Phase 3: 管理画面の本番運用化
+- 店舗メール・登録台数・端末一覧・個別失効・店舗一括失効。
+- PDF管理、管理者管理、監査ログ、アラート確認。
+
+Phase 4: セキュリティ・実機・障害検証
+- RLS/Storage、キャッシュ、iPad/Android、通信障害、監視、バックアップ、復旧、ロールバック。
+
+Phase 5: パイロット運用と段階展開
+- 2〜5店舗で先行導入し、検証環境では認証期限を短縮して再認証を試験する。
+- 問題修正、FAQ更新、段階展開、継続監視。
+
+Production公開前チェックリスト:
+- [ ] Production migration履歴整合
+- [ ] Production Auth Site URL本番化
+- [ ] Production旧Prototype環境変数削除
+- [ ] DevelopmentがProduction DBを参照していないことを確認
+- [ ] 管理API rate limitの共有化
+
+15. 実装前にINSOU側へ確認する事項
+
+- 全店舗で利用可能な店舗メールがあるか。共有メールか個人メールか。
+- 各店舗で誰がメールを確認するか。営業時間外はどうするか。
+- 店舗ごとのタブレット数と、増減時の申請者。
+- 台数差分アラートの確認者と対応手順。
+- 個別・店舗一括ログアウトを実行できる管理者と、実行後の店舗連絡方法。
+- メール不達時の代替本人確認・緊急対応。
+- 店舗メール変更の申請・承認手順。
+- PDF最大サイズ・ページ数、端末キャッシュへの保存了承。
+- パイロット対象店舗、問い合わせ窓口、障害対応担当者、保守運用範囲。
+
+16. 変更対象になる可能性があるファイル一覧
+
+実装時の候補であり、今回の変更対象ではない。
+- app/page.tsx、app/store/page.tsx、app/admin/page.tsx
+- app/api/store-search/、app/api/store-auth/、app/api/admin/
+- lib/supabase-api.ts、lib/supabase/admin.ts、lib/pdf-cache.ts
+- supabase/migrations/（新規migration）
+- .env.example、Vercel環境変数、Supabase Auth/Storage設定
+- docs/production-spec.md、supabase/README.md、運用手順・FAQ
+
+17. 優先順位付き実装タスク
+
+P0（Phase 1完了まで）:
+1. Phase 0の主要運用方針を確定する。（完了。店舗メール一覧・台数・パイロット店舗は後続入力として残る）
+2. 本番・検証Supabaseを分離し、migration・RLS・Storageの適用状況を確認する。（完了）
+3. 管理APIとservice_roleのセキュリティ監査、レート制限・監査ログ・秘密情報管理を完了する。（完了）
+
+P1（認証の最小完成）:
+4. OTP・端末・アラートのDB migrationとRLSを検証環境で作成する。
+5. メール送信基盤を選定し、検証環境で到達確認する。
+6. 店舗検索、OTP、30日HttpOnly Cookie端末認証を実装する。
+7. PDF取得時に端末セッション有効性を強制する方式を実装・検証する。
+
+P2（運用機能）:
+8. 店舗メール・台数・端末・アラート管理を実装する。
+9. 個別失効、店舗一括失効、監査ログを実装する。
+10. 管理者招待、無効化、リセットメールを実装する。
+
+P3（品質・展開）:
+11. RLS、Storage、iPad/Android、通信障害、キャッシュ試験を行う。
+12. 監視、バックアップ、復旧、ロールバック手順を整える。
+13. 2〜5店舗でパイロット運用し、重大問題解消後に段階展開する。
+
+18. 実装前に判断が必要な事項
+
+- OTPメール送信サービスと送信ドメイン。
+- 店舗検索の公開範囲・最低文字数・候補件数。
+- CookieのSameSite方針と店舗端末のブラウザ運用ルール。
+- device_id生成・端末名の方針。
+- 端末数超過時の通知先と対応SLA。
+- 全店舗一括ログアウトの要否・別権限・承認フロー。
+- PDF最大サイズ、キャッシュ容量、保持期間。
+
+区分
+
+既存コードで確認できた事実: 第1.1節。
+現在の仕様として確定している事項: 第0節、第3〜第5節の要件。
+技術的な提案: HttpOnly Cookie、session_version併用、DB/API/RLS案、Phase構成。
+INSOU側への確認が必要な事項: 第15節。
+実装前に判断が必要な事項: 第18節。

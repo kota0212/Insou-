@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Trash2,
   UploadCloud,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,9 +73,9 @@ import {
 } from '@/components/ui/sidebar';
 import {
   createSupabaseMenu,
-  createSupabaseStore,
+  createManagedStoreAccount,
   deleteSupabaseMenu,
-  deleteSupabaseStore,
+  deleteManagedStoreAccount,
   fetchSupabaseInitData,
   fetchSupabaseMenuPdf,
   getCurrentSession,
@@ -86,6 +87,10 @@ import {
   syncMenuPdfs,
   updateSupabaseMenu,
   updateSupabaseStore,
+  fetchManagedAdminUsers,
+  createManagedAdminUser,
+  resetManagedAdminPassword,
+  resetManagedStorePassword,
 } from '@/lib/supabase-api';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 
@@ -94,6 +99,7 @@ export type Screen =
   | 'admin-list'
   | 'admin-new'
   | 'admin-stores'
+  | 'admin-users'
   | 'store-list'
   | 'sync'
   | 'viewer';
@@ -394,13 +400,18 @@ export default function HomePage() {
   };
 
   // 店舗追加処理
-  const handleAddStore = async (newStore: Store) => {
+  const handleAddStore = async (newStore: Store, password: string) => {
     setIsSubmitting(true);
     try {
       if (isPrototypeAdminSession)
         throw new Error('試作モードでは店舗を追加できません');
       if (isSupabaseConfigured()) {
-        const created = await createSupabaseStore(newStore);
+        const created = await createManagedStoreAccount({
+          code: newStore.code,
+          name: newStore.name,
+          area: newStore.area,
+          password,
+        });
         setStores((prev) => [...prev, created]);
       } else throw new Error('Supabaseの接続設定が必要です');
     } catch (err) {
@@ -432,6 +443,29 @@ export default function HomePage() {
     }
   };
 
+  const handleResetStorePassword = async (storeId: string, password: string) => {
+    setIsSubmitting(true);
+    try {
+      if (isPrototypeAdminSession)
+        throw new Error('試作モードではパスワードを変更できません');
+      const result = await resetManagedStorePassword({ storeId, password });
+      setStores((prev) =>
+        prev.map((store) =>
+          store.id === storeId
+            ? { ...store, passwordUpdatedAt: result.passwordUpdatedAt }
+            : store,
+        ),
+      );
+      alert('店舗パスワードを再設定しました。新しいパスワードは安全に共有してください。');
+    } catch (err) {
+      alert(
+        `パスワード再設定に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // 店舗削除処理
   const handleDeleteStore = async (delId: string) => {
     setIsSubmitting(true);
@@ -440,7 +474,7 @@ export default function HomePage() {
         throw new Error('試作モードでは店舗を削除できません');
       if (!isSupabaseConfigured())
         throw new Error('Supabaseの接続設定が必要です');
-      await deleteSupabaseStore(delId);
+      await deleteManagedStoreAccount(delId);
       setStores((prev) => prev.filter((s) => s.id !== delId));
       setMenus((prev) =>
         prev.map((m) => ({
@@ -744,8 +778,11 @@ export default function HomePage() {
           isSubmitting={isSubmitting}
           onAddStore={handleAddStore}
           onUpdateStore={handleUpdateStore}
+          onResetPassword={handleResetStorePassword}
           onDeleteStore={handleDeleteStore}
         />
+      ) : screen === 'admin-users' ? (
+        <AdminUserManagement isPrototype={isPrototypeAdminSession} />
       ) : (
         <AdminPdfList
           menus={menus}
@@ -1154,6 +1191,11 @@ function AdminShell({
       icon: Building2,
       screen: 'admin-stores' as Screen,
     },
+    {
+      label: '管理者アカウント管理',
+      icon: Users,
+      screen: 'admin-users' as Screen,
+    },
   ];
 
   return (
@@ -1217,6 +1259,124 @@ function AdminShell({
 }
 
 // ==========================================
+// 管理者アカウント管理
+// ==========================================
+function AdminUserManagement({ isPrototype }: { isPrototype: boolean }) {
+  const [users, setUsers] = useState<import('@/lib/supabase-api').ManagedAdminUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [resetTarget, setResetTarget] = useState<import('@/lib/supabase-api').ManagedAdminUser | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+
+  const reload = useCallback(async () => {
+    if (isPrototype) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      setUsers(await fetchManagedAdminUsers());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '管理者一覧を取得できませんでした。');
+    } finally {
+      setLoading(false);
+    }
+  }, [isPrototype]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void reload(), 0);
+    return () => window.clearTimeout(timer);
+  }, [reload]);
+
+  const handleCreate = async (event: React.SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submitting || password.length < 8) return;
+    setSubmitting(true);
+    try {
+      const user = await createManagedAdminUser({ email, password });
+      setUsers((current) => [...current, user]);
+      setCreateOpen(false);
+      setEmail('');
+      setPassword('');
+      alert('管理者アカウントを追加しました。パスワードは安全に共有してください。');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '管理者アカウントを追加できませんでした。');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReset = async (event: React.SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!resetTarget || submitting || resetPassword.length < 8) return;
+    setSubmitting(true);
+    try {
+      await resetManagedAdminPassword({ userId: resetTarget.id, password: resetPassword });
+      setResetTarget(null);
+      setResetPassword('');
+      alert('管理者パスワードを再設定しました。');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'パスワードを再設定できませんでした。');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <main className="min-h-svh p-6 lg:p-10">
+      <div className="mx-auto max-w-5xl">
+        <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="mb-2 text-sm font-medium text-blue-600">アクセス管理</p>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950">管理者アカウント管理</h1>
+            <p className="mt-2 text-slate-500">管理画面へログインできるメールアドレスを管理します。</p>
+          </div>
+          <Button onClick={() => setCreateOpen(true)} disabled={isPrototype} className="h-11 rounded-xl bg-blue-600 px-4 font-bold text-white hover:bg-blue-700">
+            <Plus className="mr-2 size-4" />管理者を追加
+          </Button>
+        </header>
+
+        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 bg-amber-50 px-6 py-4 text-sm text-amber-950">
+            パスワードは安全上一覧表示できません。追加時に設定し、必要な場合は「再設定」してください。
+          </div>
+          {isPrototype ? (
+            <p className="p-8 text-sm text-slate-500">試作モードではアカウント管理を利用できません。</p>
+          ) : loading ? (
+            <div className="flex items-center gap-2 p-8 text-slate-500"><Loader2 className="size-4 animate-spin" />読み込み中...</div>
+          ) : error ? (
+            <div className="p-8"><p className="text-red-600">{error}</p><Button variant="outline" className="mt-4" onClick={() => void reload()}>再読み込み</Button></div>
+          ) : (
+            <Table>
+              <TableHeader><TableRow className="bg-slate-50/80"><TableHead className="pl-6">メールアドレス</TableHead><TableHead>登録日</TableHead><TableHead>最終ログイン</TableHead><TableHead className="pr-6 text-right">操作</TableHead></TableRow></TableHeader>
+              <TableBody>{users.map((user) => (
+                <TableRow key={user.id}><TableCell className="pl-6 font-medium">{user.email}</TableCell><TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell><TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell><TableCell className="pr-6 text-right"><Button variant="outline" size="sm" onClick={() => { setResetTarget(user); setResetPassword(''); }}>パスワードを再設定</Button></TableCell></TableRow>
+              ))}</TableBody>
+            </Table>
+          )}
+        </section>
+
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent className="max-w-md"><DialogHeader><DialogTitle>管理者を追加</DialogTitle><DialogDescription>メールアドレスと初期パスワードを入力してください。</DialogDescription></DialogHeader>
+            <form className="space-y-4" onSubmit={handleCreate}><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@example.com" required disabled={submitting} /><Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8文字以上の初期パスワード" minLength={8} required disabled={submitting} /><DialogFooter><Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={submitting}>キャンセル</Button><Button type="submit" disabled={submitting || password.length < 8} className="bg-blue-600 text-white hover:bg-blue-700">追加する</Button></DialogFooter></form>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={Boolean(resetTarget)} onOpenChange={(open) => !open && setResetTarget(null)}>
+          <DialogContent className="max-w-md"><DialogHeader><DialogTitle>管理者パスワードを再設定</DialogTitle><DialogDescription>{resetTarget?.email} の新しいパスワードを設定します。</DialogDescription></DialogHeader>
+            <form className="space-y-4" onSubmit={handleReset}><Input type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="8文字以上の新しいパスワード" minLength={8} required disabled={submitting} /><DialogFooter><Button type="button" variant="outline" onClick={() => setResetTarget(null)} disabled={submitting}>キャンセル</Button><Button type="submit" disabled={submitting || resetPassword.length < 8} className="bg-blue-600 text-white hover:bg-blue-700">再設定する</Button></DialogFooter></form>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </main>
+  );
+}
+
+// ==========================================
 // 2. 店舗管理画面 (AdminStoreManagement)
 // ==========================================
 function AdminStoreManagement({
@@ -1225,13 +1385,15 @@ function AdminStoreManagement({
   isSubmitting,
   onAddStore,
   onUpdateStore,
+  onResetPassword,
   onDeleteStore,
 }: {
   stores: Store[];
   menus: MenuPdf[];
   isSubmitting: boolean;
-  onAddStore: (store: Store) => void;
+  onAddStore: (store: Store, password: string) => void;
   onUpdateStore: (store: Store) => void;
+  onResetPassword: (storeId: string, password: string) => void;
   onDeleteStore: (id: string) => void;
 }) {
   const [editorMode, setEditorMode] = useState<'add' | 'edit' | null>(null);
@@ -1239,7 +1401,10 @@ function AdminStoreManagement({
   const [storeName, setStoreName] = useState('');
   const [storeCode, setStoreCode] = useState('');
   const [storeArea, setStoreArea] = useState('大阪');
+  const [storePassword, setStorePassword] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Store | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<Store | null>(null);
 
   const areas = Array.from(new Set(stores.map((store) => store.area))).sort(
     (a, b) => a.localeCompare(b, 'ja'),
@@ -1259,6 +1424,7 @@ function AdminStoreManagement({
     setStoreName('');
     setStoreCode('');
     setStoreArea(areas[0] || '大阪');
+    setStorePassword('');
   };
 
   const openEditEditor = () => {
@@ -1278,7 +1444,7 @@ function AdminStoreManagement({
         name: storeName.trim(),
         area: storeArea.trim(),
       });
-    } else if (editorMode === 'add') {
+    } else if (editorMode === 'add' && storePassword.length >= 8) {
       const code =
         storeCode.trim() ||
         `ST-${String(stores.length + 1).padStart(2, '0')}`;
@@ -1287,7 +1453,7 @@ function AdminStoreManagement({
         code: code.toUpperCase(),
         name: storeName.trim(),
         area: storeArea.trim(),
-      });
+      }, storePassword);
     }
     setEditorMode(null);
   };
@@ -1409,12 +1575,23 @@ function AdminStoreManagement({
                               </div>
                             </TableCell>
                             <TableCell>
-                              <p className="font-mono text-sm font-bold text-slate-800">
-                                {store.passcode || 'Supabase Auth管理'}
-                              </p>
+                              <p className="text-sm font-bold text-slate-800">設定済み</p>
                               <p className="whitespace-nowrap text-[11px] text-slate-500">
                                 更新: {store.passwordUpdatedAt ? formatDateTime(store.passwordUpdatedAt) : '記録なし'}
                               </p>
+                              <Button
+                                type="button"
+                                variant="link"
+                                size="sm"
+                                className="mt-1 h-auto px-0 text-xs text-blue-700"
+                                disabled={isSubmitting}
+                                onClick={() => {
+                                  setPasswordTarget(store);
+                                  setResetPassword('');
+                                }}
+                              >
+                                パスワードを再設定
+                              </Button>
                             </TableCell>
                             <TableCell className="pr-6 text-right">
                               <Button
@@ -1449,7 +1626,7 @@ function AdminStoreManagement({
               <DialogDescription>
                 {editorMode === 'edit'
                   ? '店舗コードはSupabase AuthのログインIDと連動するため、この画面では変更できません。'
-                  : '店舗コード、店舗名、所属エリアを入力してください。'}
+                  : '店舗コード、店舗名、所属エリアと初期パスワードを入力してください。'}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -1487,11 +1664,48 @@ function AdminStoreManagement({
                 <label className="mb-1 block text-xs font-bold text-slate-700">所属エリア<span className="ml-1 text-red-500">*</span></label>
                 <Input value={storeArea} onChange={(event) => setStoreArea(event.target.value)} placeholder="例：大阪、東京、福岡" className="rounded-xl" required disabled={isSubmitting} />
               </div>
+              {editorMode === 'add' && (
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700">初期パスワード<span className="ml-1 text-red-500">*</span></label>
+                  <Input type="password" value={storePassword} onChange={(event) => setStorePassword(event.target.value)} placeholder="8文字以上" className="rounded-xl" required minLength={8} disabled={isSubmitting} />
+                  <p className="mt-1 text-[11px] text-slate-500">作成後に平文のパスワードを再表示することはできません。</p>
+                </div>
+              )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditorMode(null)} disabled={isSubmitting}>キャンセル</Button>
-                <Button type="submit" disabled={!storeName.trim() || !storeArea.trim() || isSubmitting} className="bg-blue-600 text-white hover:bg-blue-700">
+                <Button type="submit" disabled={!storeName.trim() || !storeArea.trim() || (editorMode === 'add' && storePassword.length < 8) || isSubmitting} className="bg-blue-600 text-white hover:bg-blue-700">
                   {isSubmitting ? <><Loader2 className="mr-2 size-4 animate-spin" />保存中...</> : editorMode === 'edit' ? '変更を保存' : '店舗を追加'}
                 </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(passwordTarget)}
+          onOpenChange={(open) => !open && setPasswordTarget(null)}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>店舗パスワードを再設定</DialogTitle>
+              <DialogDescription>
+                {passwordTarget ? `${passwordTarget.code} — ${passwordTarget.name}` : ''}
+                {' の新しいログインパスワードを設定します。現在のパスワードは表示できません。'}
+              </DialogDescription>
+            </DialogHeader>
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!passwordTarget || resetPassword.length < 8 || isSubmitting) return;
+                onResetPassword(passwordTarget.id, resetPassword);
+                setPasswordTarget(null);
+              }}
+            >
+              <Input type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="8文字以上の新しいパスワード" minLength={8} required disabled={isSubmitting} />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setPasswordTarget(null)} disabled={isSubmitting}>キャンセル</Button>
+                <Button type="submit" disabled={resetPassword.length < 8 || isSubmitting} className="bg-blue-600 text-white hover:bg-blue-700">再設定する</Button>
               </DialogFooter>
             </form>
           </DialogContent>

@@ -35,6 +35,13 @@ export interface SupabaseInitData {
   menus: SupabaseMenu[];
 }
 
+export interface ManagedAdminUser {
+  id: string;
+  email: string;
+  createdAt: string;
+  lastSignInAt: string | null;
+}
+
 type MenuRow = {
   id: string;
   title: string;
@@ -57,6 +64,12 @@ export async function getCurrentSession() {
   return data.session;
 }
 
+/**
+ * @deprecated [Phase 2 移行TODO]
+ * 店舗固定共有パスワード方式はPhase 2完了時に廃止予定です。
+ * 今後は店舗名検索 → OTP認証 → 30日端末セッション（HttpOnly Cookie）方式へ移行します。
+ * （※ 管理者自身のSupabase Authメール/パスワード認証は継続維持されます）
+ */
 export async function signInStore(
   storeCode: string,
   password: string,
@@ -84,6 +97,85 @@ export async function signInAdmin(
 export async function signOut(): Promise<void> {
   const { error } = await getSupabaseBrowserClient().auth.signOut();
   throwIfError(error);
+}
+
+async function adminRequest<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const session = await getCurrentSession();
+  if (!session?.access_token) throw new Error('管理者としてログインしてください。');
+  const headers = new Headers(init.headers);
+  headers.set('Authorization', `Bearer ${session.access_token}`);
+  if (init.body) headers.set('Content-Type', 'application/json');
+  const response = await fetch(path, {
+    ...init,
+    headers,
+  });
+  const payload = (await response.json().catch(() => ({}))) as {
+    error?: string;
+  } & T;
+  if (!response.ok) {
+    throw new Error(payload.error || '管理処理に失敗しました。');
+  }
+  return payload;
+}
+
+export async function fetchManagedAdminUsers(): Promise<ManagedAdminUser[]> {
+  const result = await adminRequest<{ users: ManagedAdminUser[] }>(
+    '/api/admin/users',
+  );
+  return result.users;
+}
+
+export async function createManagedAdminUser(params: {
+  email: string;
+  password: string;
+}): Promise<ManagedAdminUser> {
+  const result = await adminRequest<{ user: ManagedAdminUser }>('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  return result.user;
+}
+
+export async function resetManagedAdminPassword(params: {
+  userId: string;
+  password: string;
+}): Promise<void> {
+  await adminRequest('/api/admin/users', {
+    method: 'PATCH',
+    body: JSON.stringify(params),
+  });
+}
+
+export async function createManagedStoreAccount(params: {
+  code: string;
+  name: string;
+  area: string;
+  password: string;
+}): Promise<SupabaseStore> {
+  const result = await adminRequest<{ store: SupabaseStore }>('/api/admin/stores', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  return result.store;
+}
+
+export async function resetManagedStorePassword(params: {
+  storeId: string;
+  password: string;
+}): Promise<{ passwordUpdatedAt: string }> {
+  return adminRequest('/api/admin/stores', {
+    method: 'PATCH',
+    body: JSON.stringify(params),
+  });
+}
+
+export async function deleteManagedStoreAccount(storeId: string): Promise<void> {
+  await adminRequest(`/api/admin/stores?storeId=${encodeURIComponent(storeId)}`, {
+    method: 'DELETE',
+  });
 }
 
 export async function fetchSupabaseInitData(): Promise<SupabaseInitData> {
