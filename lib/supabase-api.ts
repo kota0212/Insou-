@@ -367,6 +367,29 @@ export async function createSupabaseStore(params: {
   };
 }
 
+export async function updateSupabaseStore(params: {
+  id: string;
+  name: string;
+  area: string;
+}): Promise<SupabaseStore> {
+  const { data, error } = await getSupabaseBrowserClient()
+    .from('stores')
+    .update({ name: params.name, area: params.area })
+    .eq('id', params.id)
+    .select('id, code, name, area, password_updated_at, last_login_at')
+    .single();
+  throwIfError(error);
+  if (!data) throw new Error('店舗の更新結果を取得できませんでした');
+  return {
+    id: data.id,
+    code: data.code,
+    name: data.name,
+    area: data.area,
+    passwordUpdatedAt: data.password_updated_at ?? undefined,
+    lastLoginAt: data.last_login_at ?? undefined,
+  };
+}
+
 export async function deleteSupabaseStore(storeId: string): Promise<void> {
   const { error } = await getSupabaseBrowserClient()
     .from('stores')

@@ -35,6 +35,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -77,6 +85,7 @@ import {
   signOut,
   syncMenuPdfs,
   updateSupabaseMenu,
+  updateSupabaseStore,
 } from '@/lib/supabase-api';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 
@@ -403,6 +412,26 @@ export default function HomePage() {
     }
   };
 
+  const handleUpdateStore = async (store: Store) => {
+    setIsSubmitting(true);
+    try {
+      if (isPrototypeAdminSession)
+        throw new Error('試作モードでは店舗を変更できません');
+      if (!isSupabaseConfigured())
+        throw new Error('Supabaseの接続設定が必要です');
+      const updated = await updateSupabaseStore(store);
+      setStores((prev) =>
+        prev.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (err) {
+      alert(
+        `店舗変更に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // 店舗削除処理
   const handleDeleteStore = async (delId: string) => {
     setIsSubmitting(true);
@@ -714,6 +743,7 @@ export default function HomePage() {
           menus={menus}
           isSubmitting={isSubmitting}
           onAddStore={handleAddStore}
+          onUpdateStore={handleUpdateStore}
           onDeleteStore={handleDeleteStore}
         />
       ) : (
@@ -1194,47 +1224,77 @@ function AdminStoreManagement({
   menus,
   isSubmitting,
   onAddStore,
+  onUpdateStore,
   onDeleteStore,
 }: {
   stores: Store[];
   menus: MenuPdf[];
   isSubmitting: boolean;
   onAddStore: (store: Store) => void;
+  onUpdateStore: (store: Store) => void;
   onDeleteStore: (id: string) => void;
 }) {
-  const [newStoreName, setNewStoreName] = useState('');
-  const [newStoreCode, setNewStoreCode] = useState('');
-  const [newArea, setNewArea] = useState('大阪');
-  const [customArea, setCustomArea] = useState('');
-  const [isCustomArea, setIsCustomArea] = useState(false);
+  const [editorMode, setEditorMode] = useState<'add' | 'edit' | null>(null);
+  const [editingStoreId, setEditingStoreId] = useState('');
+  const [storeName, setStoreName] = useState('');
+  const [storeCode, setStoreCode] = useState('');
+  const [storeArea, setStoreArea] = useState('大阪');
   const [deleteTarget, setDeleteTarget] = useState<Store | null>(null);
 
-  const existingAreas = Array.from(new Set(stores.map((s) => s.area)));
+  const areas = Array.from(new Set(stores.map((store) => store.area))).sort(
+    (a, b) => a.localeCompare(b, 'ja'),
+  );
+  const selectedStore = stores.find((store) => store.id === editingStoreId);
 
-  const handleAdd = (e: React.FormEvent) => {
+  const populateEditor = (store: Store) => {
+    setEditingStoreId(store.id);
+    setStoreName(store.name);
+    setStoreCode(store.code);
+    setStoreArea(store.area || 'その他');
+  };
+
+  const openAddEditor = () => {
+    setEditorMode('add');
+    setEditingStoreId('');
+    setStoreName('');
+    setStoreCode('');
+    setStoreArea(areas[0] || '大阪');
+  };
+
+  const openEditEditor = () => {
+    const target = stores[0];
+    if (!target) return;
+    setEditorMode('edit');
+    populateEditor(target);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStoreName.trim() || isSubmitting) return;
-    const finalArea = isCustomArea ? customArea.trim() || 'その他' : newArea;
-    const id = `store-${Date.now()}`;
-    const code =
-      newStoreCode.trim() || `ST-${String(stores.length + 1).padStart(2, '0')}`;
-    onAddStore({
-      id,
-      code: code.toUpperCase(),
-      name: newStoreName.trim(),
-      area: finalArea,
-    });
-    setNewStoreName('');
-    setNewStoreCode('');
-    if (isCustomArea) {
-      setCustomArea('');
-      setIsCustomArea(false);
+    if (!storeName.trim() || !storeArea.trim() || isSubmitting) return;
+
+    if (editorMode === 'edit' && selectedStore) {
+      onUpdateStore({
+        ...selectedStore,
+        name: storeName.trim(),
+        area: storeArea.trim(),
+      });
+    } else if (editorMode === 'add') {
+      const code =
+        storeCode.trim() ||
+        `ST-${String(stores.length + 1).padStart(2, '0')}`;
+      onAddStore({
+        id: `store-${Date.now()}`,
+        code: code.toUpperCase(),
+        name: storeName.trim(),
+        area: storeArea.trim(),
+      });
     }
+    setEditorMode(null);
   };
 
   return (
     <main className="min-h-svh p-6 lg:p-10">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-7xl">
         <header className="mb-8">
           <p className="mb-2 text-sm font-medium text-blue-600">マスター設定</p>
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1246,236 +1306,196 @@ function AdminStoreManagement({
                 Supabaseと同期し、メニューを配信する店舗を管理します。
               </p>
             </div>
-            <span className="rounded-full bg-blue-50 px-4 py-1.5 text-sm font-bold text-blue-700">
-              全 {stores.length} 店舗登録中
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-blue-50 px-4 py-1.5 text-sm font-bold text-blue-700">
+                全 {stores.length} 店舗登録中
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={openEditEditor}
+                disabled={isSubmitting || stores.length === 0}
+                className="h-11 rounded-xl px-4 font-bold"
+              >
+                <Pencil className="mr-2 size-4" />
+                店舗情報を変更
+              </Button>
+              <Button
+                type="button"
+                onClick={openAddEditor}
+                disabled={isSubmitting}
+                className="h-11 rounded-xl bg-blue-600 px-4 font-bold text-white shadow-sm hover:bg-blue-700"
+              >
+                <Plus className="mr-2 size-4" />
+                店舗を追加
+              </Button>
+            </div>
           </div>
         </header>
 
-        <div className="grid gap-8 lg:grid-cols-[340px_1fr]">
-          {/* 新規店舗追加カード */}
-          <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center gap-2 font-bold text-slate-900">
-              <Building2 className="size-5 text-blue-600" />
-              新しい店舗を追加
-            </div>
-            <form onSubmit={handleAdd} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  店舗名<span className="text-red-500 ml-1">*</span>
-                </label>
-                <Input
-                  value={newStoreName}
-                  onChange={(e) => setNewStoreName(e.target.value)}
-                  placeholder="例：祇園A店、銀座中央店"
-                  className="rounded-xl"
-                  required
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  店舗コード (ログイン用)
-                </label>
-                <Input
-                  value={newStoreCode}
-                  onChange={(e) => setNewStoreCode(e.target.value)}
-                  placeholder="例：GN-01 (未入力で自動生成)"
-                  className="rounded-xl uppercase font-mono"
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  所属エリア
-                </label>
-                {!isCustomArea ? (
-                  <div className="space-y-2">
-                    <Select
-                      value={newArea}
-                      onValueChange={(v) => setNewArea(v || '大阪')}
-                      disabled={isSubmitting}
-                    >
-                      <SelectTrigger className="rounded-xl bg-slate-50">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {existingAreas.map((a) => (
-                          <SelectItem key={a} value={a}>
-                            {a}エリア
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomArea(true)}
-                      className="text-xs text-blue-600 hover:underline"
-                      disabled={isSubmitting}
-                    >
-                      + 新しいエリアを入力する
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Input
-                      value={customArea}
-                      onChange={(e) => setCustomArea(e.target.value)}
-                      placeholder="エリア名（例：東京、福岡）"
-                      className="rounded-xl"
-                      disabled={isSubmitting}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomArea(false)}
-                      className="text-xs text-slate-500 hover:underline"
-                      disabled={isSubmitting}
-                    >
-                      既存エリアから選択に戻す
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <Button
-                type="submit"
-                disabled={!newStoreName.trim() || isSubmitting}
-                className="w-full rounded-xl bg-blue-600 font-bold text-white hover:bg-blue-700"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-1.5 size-4 animate-spin" />
-                    保存中...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="mr-1 size-4" />
-                    店舗を追加
-                  </>
-                )}
-              </Button>
-            </form>
+        {stores.length === 0 ? (
+          <section className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+            <Building2 className="mx-auto mb-3 size-10 text-slate-400" />
+            <p className="font-bold text-slate-700">登録されている店舗はありません</p>
+            <p className="mt-1 text-sm text-slate-500">
+              右上の「店舗を追加」から最初の店舗を登録してください。
+            </p>
           </section>
-
-          {/* 登録店舗一覧テーブル */}
-          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <div className="border-b border-slate-100 p-5 bg-slate-50/50 flex items-center justify-between">
-              <p className="font-bold text-slate-900">登録済み店舗</p>
-              <span className="text-xs text-slate-500">
-                削除すると、各メニューの配信対象からも自動除外されます
-              </span>
-            </div>
-
-            {stores.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-sm">
-                登録されている店舗はありません。左側のフォームから追加してください。
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50/80">
-                    <TableHead className="pl-6 text-xs text-slate-500">
-                      コード
-                    </TableHead>
-                    <TableHead className="text-xs text-slate-500">
-                      店舗名
-                    </TableHead>
-                    <TableHead className="text-xs text-slate-500">
-                      エリア
-                    </TableHead>
-                    <TableHead className="text-xs text-slate-500">
-                      配信中メニュー
-                    </TableHead>
-                    <TableHead className="text-xs text-slate-500">
-                      ログイン状況
-                    </TableHead>
-                    <TableHead className="text-xs text-slate-500">
-                      パスワード
-                    </TableHead>
-                    <TableHead className="pr-6 text-right text-xs text-slate-500">
-                      操作
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stores.map((store) => {
-                    const assignedCount = menus.filter((m) =>
-                      m.storeIds.includes(store.id),
-                    ).length;
-                    return (
-                      <TableRow key={store.id} className="h-16">
-                        <TableCell className="pl-6">
-                          <span className="inline-flex rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-mono font-bold text-slate-800">
-                            {store.code || store.id}
-                          </span>
-                        </TableCell>
-                        <TableCell className="font-semibold text-slate-900">
-                          {store.name}
-                        </TableCell>
-                        <TableCell>
-                          <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
-                            {store.area}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800">
-                            {assignedCount} 件配信中
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                                store.lastLoginAt
-                                  ? 'bg-emerald-50 text-emerald-700'
-                                  : 'bg-slate-100 text-slate-500'
-                              }`}
-                            >
-                              {store.lastLoginAt
-                                ? 'ログイン済み'
-                                : '未ログイン'}
-                            </span>
-                            <p className="whitespace-nowrap text-[11px] text-slate-500">
-                              最終:{' '}
-                              {store.lastLoginAt
-                                ? formatDateTime(store.lastLoginAt)
-                                : '記録なし'}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <p className="font-mono text-sm font-bold text-slate-800">
-                            {store.passcode || '1234'}
-                          </p>
-                          <p className="whitespace-nowrap text-[11px] text-slate-500">
-                            更新:{' '}
-                            {store.passwordUpdatedAt
-                              ? formatDateTime(store.passwordUpdatedAt)
-                              : '記録なし'}
-                          </p>
-                        </TableCell>
-                        <TableCell className="pr-6 text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={isSubmitting}
-                            className="rounded-lg text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
-                            onClick={() => setDeleteTarget(store)}
-                          >
-                            <Trash2 className="size-3.5 mr-1" />
-                            削除
-                          </Button>
-                        </TableCell>
+        ) : (
+          <div className="space-y-8">
+            {areas.map((area) => {
+              const storesInArea = stores.filter((store) => store.area === area);
+              return (
+                <section
+                  key={area}
+                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/50 px-6 py-4">
+                    <div>
+                      <h2 className="font-bold text-slate-900">{area}エリア</h2>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {storesInArea.length} 店舗
+                      </p>
+                    </div>
+                    <span className="text-xs text-slate-500">
+                      削除した店舗は配信対象からも自動除外されます
+                    </span>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-slate-50/80">
+                        <TableHead className="pl-6 text-xs text-slate-500">コード</TableHead>
+                        <TableHead className="text-xs text-slate-500">店舗名</TableHead>
+                        <TableHead className="min-w-56 text-xs text-slate-500">配信メニュー名</TableHead>
+                        <TableHead className="text-xs text-slate-500">ログイン状況</TableHead>
+                        <TableHead className="text-xs text-slate-500">パスワード</TableHead>
+                        <TableHead className="pr-6 text-right text-xs text-slate-500">操作</TableHead>
                       </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </section>
-        </div>
+                    </TableHeader>
+                    <TableBody>
+                      {storesInArea.map((store) => {
+                        const assignedMenus = menus.filter((menu) =>
+                          menu.storeIds.includes(store.id),
+                        );
+                        return (
+                          <TableRow key={store.id} className="h-20">
+                            <TableCell className="pl-6">
+                              <span className="inline-flex rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-mono font-bold text-slate-800">
+                                {store.code || store.id}
+                              </span>
+                            </TableCell>
+                            <TableCell className="font-semibold text-slate-900">{store.name}</TableCell>
+                            <TableCell>
+                              {assignedMenus.length ? (
+                                <div className="space-y-1 text-sm text-slate-700">
+                                  {assignedMenus.map((menu) => (
+                                    <p key={menu.id} className="truncate" title={menu.title}>
+                                      {menu.title}
+                                    </p>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-sm text-slate-400">配信なし</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="space-y-1">
+                                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${store.lastLoginAt ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                  {store.lastLoginAt ? 'ログイン済み' : '未ログイン'}
+                                </span>
+                                <p className="whitespace-nowrap text-[11px] text-slate-500">
+                                  最終: {store.lastLoginAt ? formatDateTime(store.lastLoginAt) : '記録なし'}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <p className="font-mono text-sm font-bold text-slate-800">
+                                {store.passcode || 'Supabase Auth管理'}
+                              </p>
+                              <p className="whitespace-nowrap text-[11px] text-slate-500">
+                                更新: {store.passwordUpdatedAt ? formatDateTime(store.passwordUpdatedAt) : '記録なし'}
+                              </p>
+                            </TableCell>
+                            <TableCell className="pr-6 text-right">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={isSubmitting}
+                                className="rounded-lg text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => setDeleteTarget(store)}
+                              >
+                                <Trash2 className="mr-1 size-3.5" />
+                                削除
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </section>
+              );
+            })}
+          </div>
+        )}
+
+        <Dialog
+          open={editorMode !== null}
+          onOpenChange={(open) => !open && setEditorMode(null)}
+        >
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{editorMode === 'edit' ? '店舗情報を変更' : '店舗を追加'}</DialogTitle>
+              <DialogDescription>
+                {editorMode === 'edit'
+                  ? '店舗コードはSupabase AuthのログインIDと連動するため、この画面では変更できません。'
+                  : '店舗コード、店舗名、所属エリアを入力してください。'}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {editorMode === 'edit' && (
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700">変更する店舗</label>
+                  <Select
+                    value={editingStoreId}
+                    onValueChange={(id) => {
+                      const target = stores.find((store) => store.id === id);
+                      if (target) populateEditor(target);
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {stores.map((store) => (
+                        <SelectItem key={store.id} value={store.id}>
+                          {store.code} — {store.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">店舗名<span className="ml-1 text-red-500">*</span></label>
+                <Input value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="例：祇園A店、銀座中央店" className="rounded-xl" required disabled={isSubmitting} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">店舗コード (ログイン用)</label>
+                <Input value={storeCode} onChange={(event) => setStoreCode(event.target.value)} placeholder="例：GN-01 (未入力で自動生成)" className="rounded-xl font-mono uppercase" disabled={isSubmitting || editorMode === 'edit'} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">所属エリア<span className="ml-1 text-red-500">*</span></label>
+                <Input value={storeArea} onChange={(event) => setStoreArea(event.target.value)} placeholder="例：大阪、東京、福岡" className="rounded-xl" required disabled={isSubmitting} />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditorMode(null)} disabled={isSubmitting}>キャンセル</Button>
+                <Button type="submit" disabled={!storeName.trim() || !storeArea.trim() || isSubmitting} className="bg-blue-600 text-white hover:bg-blue-700">
+                  {isSubmitting ? <><Loader2 className="mr-2 size-4 animate-spin" />保存中...</> : editorMode === 'edit' ? '変更を保存' : '店舗を追加'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* 店舗削除確認モーダル */}
         <AlertDialog
@@ -2548,8 +2568,11 @@ function PdfCanvas({
         for (const pageNumber of pageOrder) {
           const pdfPage = await pdf.getPage(pageNumber);
           const baseViewport = pdfPage.getViewport({ scale: 1 });
-          const deviceScale = Math.min(window.devicePixelRatio || 1, 1.5);
-          const maxPixels = 8_000_000;
+          // PDF本体はSupabase Storageからバイナリのまま取得している。
+          // 表示時も端末のRetina密度まで描画し、低解像度へ意図的に落とさない。
+          // 上限はiPadでも安全に扱える高精細な32MPに留める。
+          const deviceScale = Math.min(window.devicePixelRatio || 1, 3);
+          const maxPixels = 32_000_000;
           const pixelScaleLimit = Math.sqrt(
             maxPixels / (baseViewport.width * baseViewport.height),
           );
