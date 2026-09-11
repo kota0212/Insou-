@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "initialized_at": "2026-09-11T04:24:21+00:00",
+  "last_updated": "2026-09-11T04:24:21+00:00",
+  "project_name": "sites-project",
+  "stack": [
+    "JavaScript/TypeScript",
+    "Node.js",
+    "Next.js",
+    "React",
+    "PDF.js",
+    "IndexedDB"
+  ],
+  "detected_stack": [
+    "JavaScript/TypeScript",
+    "Node.js",
+    "Next.js",
+    "React",
+    "PDF.js",
+    "IndexedDB"
+  ],
+  "languages": [
+    "JavaScript/TypeScript",
+    "Node.js"
+  ],
+  "frameworks": [
+    "Next.js",
+    "React"
+  ],
+  "package_manager": "npm",
+  "package_manager_candidates": [
+    "npm"
+  ],
+  "commands": {
+    "test": null,
+    "build": "npm run build",
+    "lint": "npm run lint",
+    "format": "npm run format",
+    "typecheck": null
+  },
+  "execution_commands": {
+    "test": null,
+    "build": "npm --prefix /Users/kota/Library/Mobile Documents/com~apple~CloudDocs/Vexum/insou/insou メニュー閲覧システム run build",
+    "lint": "npm --prefix /Users/kota/Library/Mobile Documents/com~apple~CloudDocs/Vexum/insou/insou メニュー閲覧システム run lint",
+    "format": "npm --prefix /Users/kota/Library/Mobile Documents/com~apple~CloudDocs/Vexum/insou/insou メニュー閲覧システム run format",
+    "typecheck": null
+  },
+  "git": {
+    "enabled": true,
+    "default_branch": "main",
+    "direct_push_to_default_branch": false
+  },
+  "database": {
+    "enabled": true,
+    "technologies": [
+      "Supabase Database",
+      "Supabase Auth",
+      "Supabase Private Storage",
+      "Supabase RLS"
+    ],
+    "migration_detected": true,
+    "migration_paths": [
+      "supabase/migrations/202609100001_initial_schema.sql"
+    ],
+    "migration_command": null,
+    "requires_user_confirmation": true
+  },
+  "deploy": {
+    "detected": true,
+    "providers": [
+      "Vercel"
+    ],
+    "requires_user_confirmation": true
+  },
+  "ci_cd": {
+    "detected": false,
+    "files": []
+  },
+  "secrets": {
+    "detected_files": [
+      ".env.example",
+      ".env.local"
+    ],
+    "contents_inspected": false,
+    "requires_user_confirmation": true
+  },
+  "external_services": [
+    "Supabase"
+  ],
+  "package_install": {
+    "command": "npm install",
+    "decision": "codex_review"
+  },
+  "project_structure": {
+    "top_level_directories": [
+      ".openai",
+      ".vercel",
+      ".vinext",
+      ".wrangler",
+      "app",
+      "components",
+      "docs",
+      "gas",
+      "hooks",
+      "lib",
+      "out",
+      "public",
+      "supabase"
+    ],
+    "top_level_files": [
+      ".DS_Store",
+      ".env.example",
+      ".env.local",
+      ".gitignore",
+      ".oxfmtrc.json",
+      ".oxlintrc.json",
+      "components.json",
+      "next-env.d.ts",
+      "next.config.mjs",
+      "package-lock.json",
+      "package.json",
+      "postcss.config.mjs",
+      "README.md",
+      "TODO.md",
+      "tsconfig.json",
+      "vercel.json",
+      "vite.config.ts",
+      "変更したい点.txt"
+    ]
+  },
+  "development_rules": [
+    "README.md"
+  ],
+  "dangerous_paths": [
+    ".env.example",
+    ".env.local",
+    ".openai/hosting.json",
+    "vercel.json"
+  ],
+  "production_risks": [
+    "git_push",
+    "merge",
+    "production_deploy",
+    "production_database_change",
+    "production_data_mutation",
+    "secrets",
+    "billable_operations"
+  ],
+  "permissions": {
+    "workspace_read": "allow",
+    "workspace_write": "allow",
+    "safe_command_keys": [
+      "build",
+      "lint",
+      "format"
+    ],
+    "package_install": "codex_review",
+    "file_delete": "codex_review",
+    "branch_operation": "codex_review",
+    "git_push": "ask_user",
+    "merge": "ask_user",
+    "production_deploy": "ask_user",
+    "production_database_change": "ask_user",
+    "secrets": "ask_user",
+    "irreversible_operation": "ask_user"
+  },
+  "unknowns": [
+    "commands.test",
+    "commands.typecheck"
+  ],
+  "analysis": {
+    "signal_fingerprint": {
+      ".openai/hosting.json": "a144d6d70da7fecc4b4361b97ebeb222224b1ca922c33e9df7e209f438e41e6e",
+      "git:default_branch": "main",
+      "package-lock.json": "86ef0320f3e37b466263f6fcf09e28e1bdd79c8a5a660d6c8ff8fcaa4dd9beda",
+      "package.json": "dff748ca9dc587e52753ac3ae38fee76726c666c2bbf2a7d7ef487a9445b0013",
+      "tsconfig.json": "4e452f4ddaec7deee5dba4de08c37d7ce2ee9cd8a0f3902518d729549d964d52",
+      "vercel.json": "bad479590ddc1feb7eded48273c96dd1d16a498c6d30900d0b8fa17c3c734945"
+    }
+  }
+}
