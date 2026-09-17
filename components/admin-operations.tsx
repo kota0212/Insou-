@@ -36,6 +36,15 @@ type Log = {
   target_type: string | null;
   target_id: string | null;
 };
+const actionLabels: Record<string, string> = {
+  store_updated: "店舗情報を変更",
+  store_sessions_revoked: "店舗の全端末をログアウト",
+  admin_deleted: "管理者アカウントを削除",
+  security_alert_resolved: "セキュリティアラートを解決",
+  CREATE_ADMIN_USER: "管理者を追加",
+  LIST_ADMIN_USERS: "管理者一覧を表示",
+};
+const actorLabels: Record<string, string> = { admin: "管理者", store: "店舗", anonymous: "未認証" };
 async function authFetch(path: string, init?: RequestInit) {
   const { data } = await getSupabaseBrowserClient().auth.getSession();
   const token = data.session?.access_token;
@@ -52,11 +61,13 @@ async function authFetch(path: string, init?: RequestInit) {
 export function AdminOperations({
   stores,
   mode,
+  initialStoreId = "",
 }: {
   stores: Store[];
   mode: "devices" | "alerts" | "audit";
+  initialStoreId?: string;
 }) {
-  const [storeId, setStoreId] = useState("");
+  const [storeId, setStoreId] = useState(initialStoreId);
   const [devices, setDevices] = useState<Device[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -114,7 +125,7 @@ export function AdminOperations({
   if (mode === "devices")
     return (
       <section className="p-6">
-        <h1 className="mb-4 text-2xl font-bold">端末管理</h1>
+        <h1 className="mb-4 text-2xl font-bold">店舗の認証端末</h1>
         <select
           className="mb-4 rounded border p-2"
           value={storeId}
@@ -202,12 +213,12 @@ export function AdminOperations({
     );
   return (
     <section className="p-6">
-      <h1 className="mb-4 text-2xl font-bold">監査ログ</h1>
+      <h1 className="mb-4 text-2xl font-bold">操作ログ</h1>
       <div className="mb-4 flex flex-wrap gap-2"><select className="rounded border p-2" value={storeId} onChange={e=>setStoreId(e.target.value)}><option value="">全店舗</option>{stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><input className="rounded border p-2" placeholder="action" value={action} onChange={e=>setAction(e.target.value)}/><input className="rounded border p-2" placeholder="actor_type" value={actorType} onChange={e=>setActorType(e.target.value)}/></div>
       {logs.map((l) => (
         <div key={l.id} className="border-b py-3 text-sm">
           <span>{new Date(l.occurred_at).toLocaleString("ja-JP")}</span>　
-          <b>{l.action}</b>　{l.actor_type}　{l.target_type || ""}
+          <b>{actionLabels[l.action] || l.action}</b>　操作者: {actorLabels[l.actor_type] || l.actor_type}　対象店舗: {stores.find((s) => s.id === l.store_id)?.name || "全体"}　対象: {l.target_type || "-"}
         </div>
       ))}
     </section>

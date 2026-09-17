@@ -90,7 +90,6 @@ import {
   fetchManagedAdminUsers,
   createManagedAdminUser,
   resetManagedAdminPassword,
-  resetManagedStorePassword,
   fetchStoreAuthMenuPdf,
   StoreAuthMenu,
   StoreAuthSession,
@@ -106,6 +105,7 @@ export type Screen =
   | 'admin-new'
   | 'admin-stores'
   | 'admin-users'
+  | 'admin-user-delete'
   | 'admin-devices'
   | 'admin-alerts'
   | 'admin-audit'
@@ -186,10 +186,6 @@ type LoginMode = 'store' | 'admin';
 const prototypeMode = process.env.NEXT_PUBLIC_PROTOTYPE_MODE === 'true';
 const prototypeStoreCode = process.env.NEXT_PUBLIC_PROTOTYPE_STORE_CODE ?? '';
 const prototypeStorePin = process.env.NEXT_PUBLIC_PROTOTYPE_STORE_PIN ?? '';
-const prototypeAdminEmail =
-  process.env.NEXT_PUBLIC_PROTOTYPE_ADMIN_EMAIL ?? 'k.nishida@vexum-ai.com';
-const prototypeAdminPassword =
-  process.env.NEXT_PUBLIC_PROTOTYPE_ADMIN_PASSWORD || 'password';
 
 export default function HomePage() {
   const pathname = usePathname();
@@ -461,28 +457,6 @@ export default function HomePage() {
     }
   };
 
-  const handleResetStorePassword = async (storeId: string, password: string) => {
-    setIsSubmitting(true);
-    try {
-      if (isPrototypeAdminSession)
-        throw new Error('試作モードではパスワードを変更できません');
-      const result = await resetManagedStorePassword({ storeId, password });
-      setStores((prev) =>
-        prev.map((store) =>
-          store.id === storeId
-            ? { ...store, passwordUpdatedAt: result.passwordUpdatedAt }
-            : store,
-        ),
-      );
-      alert('店舗パスワードを再設定しました。新しいパスワードは安全に共有してください。');
-    } catch (err) {
-      alert(
-        `パスワード再設定に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   // 店舗削除処理
   const handleDeleteStore = async (delId: string) => {
@@ -773,13 +747,6 @@ export default function HomePage() {
         errorMessage={errorMessage}
         onRetry={() => void loadData()}
       />
-      {isPrototypeAdminSession && (
-        <div className="mx-6 mt-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <strong>試作モードの管理画面です。</strong>{' '}
-          認証・保存を伴う操作は行わず、画面遷移と表示のみ確認できます。
-        </div>
-      )}
-
       {screen === 'admin-new' ? (
         <NewPdfForm
           stores={stores}
@@ -798,13 +765,12 @@ export default function HomePage() {
           isSubmitting={isSubmitting}
           onAddStore={handleAddStore}
           onUpdateStore={handleUpdateStore}
-          onResetPassword={handleResetStorePassword}
           onDeleteStore={handleDeleteStore}
         />
       ) : screen === 'admin-users' ? (
-        <AdminUserManagement isPrototype={isPrototypeAdminSession} />
-      ) : screen === 'admin-devices' ? (
-        <AdminOperations stores={stores} mode="devices" />
+        <AdminUserManagement isPrototype={isPrototypeAdminSession} onDeletePage={() => setScreen('admin-user-delete')} />
+      ) : screen === 'admin-user-delete' ? (
+        <AdminUserManagement isPrototype={isPrototypeAdminSession} deleteOnly onBack={() => setScreen('admin-users')} />
       ) : screen === 'admin-alerts' ? (
         <AdminOperations stores={stores} mode="alerts" />
       ) : screen === 'admin-audit' ? (
@@ -1206,11 +1172,10 @@ function AdminShell({
       screen: 'admin-stores' as Screen,
     },
     {
-      label: '管理者アカウント管理',
+      label: '管理者の管理',
       icon: Users,
       screen: 'admin-users' as Screen,
     },
-    { label: '端末管理', icon: Building2, screen: 'admin-devices' as Screen },
     { label: 'セキュリティアラート', icon: AlertTriangle, screen: 'admin-alerts' as Screen },
     { label: '操作ログ', icon: FileText, screen: 'admin-audit' as Screen },
   ];
@@ -1278,7 +1243,7 @@ function AdminShell({
 // ==========================================
 // 管理者アカウント管理
 // ==========================================
-function AdminUserManagement({ isPrototype }: { isPrototype: boolean }) {
+function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, onBack }: { isPrototype: boolean; deleteOnly?: boolean; onDeletePage?: () => void; onBack?: () => void }) {
   const [users, setUsers] = useState<import('@/lib/supabase-api').ManagedAdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -1288,6 +1253,9 @@ function AdminUserManagement({ isPrototype }: { isPrototype: boolean }) {
   const [password, setPassword] = useState('');
   const [resetTarget, setResetTarget] = useState<import('@/lib/supabase-api').ManagedAdminUser | null>(null);
   const [resetPassword, setResetPassword] = useState('');
+  const [managementOpen, setManagementOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(deleteOnly);
+  const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (isPrototype) {
@@ -1309,6 +1277,10 @@ function AdminUserManagement({ isPrototype }: { isPrototype: boolean }) {
     const timer = window.setTimeout(() => void reload(), 0);
     return () => window.clearTimeout(timer);
   }, [reload]);
+
+  useEffect(() => {
+    void getCurrentSession().then((session) => setCurrentAdminId(session?.user?.id ?? null));
+  }, []);
 
   const handleCreate = async (event: React.SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1350,17 +1322,18 @@ function AdminUserManagement({ isPrototype }: { isPrototype: boolean }) {
         <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="mb-2 text-sm font-medium text-blue-600">アクセス管理</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">管理者アカウント管理</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950">{deleteMode ? '管理者を削除' : '管理者の管理'}</h1>
             <p className="mt-2 text-slate-500">管理画面へログインできるメールアドレスを管理します。</p>
           </div>
-          <Button onClick={() => setCreateOpen(true)} disabled={isPrototype} className="h-11 rounded-xl bg-blue-600 px-4 font-bold text-white hover:bg-blue-700">
-            <Plus className="mr-2 size-4" />管理者を追加
-          </Button>
+          {!deleteOnly && <Button onClick={() => setManagementOpen(true)} disabled={isPrototype} className="h-11 rounded-xl bg-blue-600 px-4 font-bold text-white hover:bg-blue-700">
+            <Users className="mr-2 size-4" />管理者の管理
+          </Button>}
+          {deleteOnly && onBack && <Button variant="outline" onClick={onBack}>管理者の管理へ戻る</Button>}
         </header>
 
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 bg-amber-50 px-6 py-4 text-sm text-amber-950">
-            パスワードは安全上一覧表示できません。追加時に設定し、必要な場合は「再設定」してください。
+            パスワードは安全上一覧表示できません。必要な場合は再設定してください。
           </div>
           {isPrototype ? (
             <p className="p-8 text-sm text-slate-500">試作モードではアカウント管理を利用できません。</p>
@@ -1372,11 +1345,17 @@ function AdminUserManagement({ isPrototype }: { isPrototype: boolean }) {
             <Table>
               <TableHeader><TableRow className="bg-slate-50/80"><TableHead className="pl-6">メールアドレス</TableHead><TableHead>登録日</TableHead><TableHead>最終ログイン</TableHead><TableHead className="pr-6 text-right">操作</TableHead></TableRow></TableHeader>
               <TableBody>{users.map((user) => (
-                <TableRow key={user.id}><TableCell className="pl-6 font-medium">{user.email}</TableCell><TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell><TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell><TableCell className="pr-6 text-right"><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => { setResetTarget(user); setResetPassword(''); }}>パスワードを再設定</Button><Button variant="outline" size="sm" className="text-red-600" onClick={async () => { if (!window.confirm(`この管理者アカウントを削除しますか？\n${user.email}`)) return; const session=await getCurrentSession(); if(!session?.access_token)return; const response=await fetch(`/api/admin/users?id=${user.id}`,{method:'DELETE',headers:{Authorization:`Bearer ${session.access_token}`}}); if(response.ok) await reload(); else { const b=await response.json() as {error?:string}; alert(b.error||'削除に失敗しました'); } }}>削除</Button></div></TableCell></TableRow>
+                <TableRow key={user.id}><TableCell className="pl-6 font-medium">{user.email}</TableCell><TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell><TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell><TableCell className="pr-6 text-right"><div className="flex justify-end gap-2">{!deleteMode && <Button variant="outline" size="sm" onClick={() => { setResetTarget(user); setResetPassword(''); }}>パスワードを再設定</Button>}{deleteMode && (user.id === currentAdminId ? <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-500">現在ログイン中</span> : <Button variant="outline" size="sm" className="text-red-600" onClick={async () => { if (!window.confirm(`この管理者アカウントを削除しますか？\n${user.email}\n削除後、このアカウントでは管理画面へログインできなくなります。`)) return; const session=await getCurrentSession(); if(!session?.access_token)return; const response=await fetch(`/api/admin/users?id=${user.id}`,{method:'DELETE',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'}}); if(response.ok) await reload(); else { const b=await response.json() as {error?:string}; alert(b.error||'削除に失敗しました'); } }}>この管理者を削除</Button>)}</div></TableCell></TableRow>
               ))}</TableBody>
             </Table>
           )}
         </section>
+
+        {deleteMode && !deleteOnly && <Button variant="outline" className="mt-4" onClick={() => setDeleteMode(false)}>管理者一覧へ戻る</Button>}
+
+        <Dialog open={managementOpen} onOpenChange={setManagementOpen}>
+          <DialogContent className="max-w-md"><DialogHeader><DialogTitle>管理者の管理</DialogTitle><DialogDescription>実行する操作を選択してください。</DialogDescription></DialogHeader><div className="grid gap-3"><Button onClick={() => { setManagementOpen(false); setDeleteMode(false); setCreateOpen(true); }} className="bg-blue-600 text-white hover:bg-blue-700">管理者を追加</Button><Button variant="outline" onClick={() => { setManagementOpen(false); onDeletePage?.(); }}>管理者を削除</Button></div></DialogContent>
+        </Dialog>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogContent className="max-w-md"><DialogHeader><DialogTitle>管理者を追加</DialogTitle><DialogDescription>メールアドレスと初期パスワードを入力してください。</DialogDescription></DialogHeader>
@@ -1399,7 +1378,7 @@ function AdminUserManagement({ isPrototype }: { isPrototype: boolean }) {
 function StoreDetailPanel({ store, onBack, onSaved }: { store: Store; onBack: () => void; onSaved: (store: Store) => void }) {
   const [name, setName] = useState(store.name); const [area, setArea] = useState(store.area); const [email, setEmail] = useState(store.notificationEmail ?? ''); const [count, setCount] = useState(store.registeredTabletCount?.toString() ?? ''); const [active, setActive] = useState(store.isActive !== false); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
  const save = async () => { setSaving(true); setError(''); try { const session = await getCurrentSession(); if (!session?.access_token) throw new Error('認証が必要です'); const res = await fetch('/api/admin/stores',{method:'PATCH',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({storeId:store.id,name,area,notification_email:email,registered_tablet_count:count===''?null:Number(count),is_active:active})}); const body=await res.json() as {error?: string}; if(!res.ok) throw new Error(body.error); onSaved({...store,name,area,notificationEmail:email||undefined,registeredTabletCount:count===''?null:Number(count),isActive:active}); } catch(e){setError(e instanceof Error?e.message:'保存に失敗しました')} finally{setSaving(false)} };
-  return <main className="min-h-svh p-6 lg:p-10"><div className="mx-auto max-w-4xl"><Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 size-4"/>店舗一覧へ戻る</Button><h1 className="mt-4 text-3xl font-bold">{store.name} 詳細</h1><section className="mt-6 rounded-2xl border bg-white p-6"><h2 className="text-xl font-bold">基本情報</h2><div className="mt-4 grid gap-4 sm:grid-cols-2"><label>店舗名<Input value={name} onChange={e=>setName(e.target.value)}/></label><label>店舗コード<Input value={store.code} disabled/></label><label>エリア<Input value={area} onChange={e=>setArea(e.target.value)}/></label><label>通知メール<Input type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>登録タブレット台数<Input type="number" min="0" value={count} onChange={e=>setCount(e.target.value)}/></label><label className="flex items-center gap-2 pt-6"><Checkbox checked={active} onCheckedChange={v=>setActive(Boolean(v))}/>店舗を有効にする</label></div>{error&&<p className="mt-3 text-sm text-red-600">{error}</p>}<Button className="mt-5" onClick={()=>void save()} disabled={saving}>保存</Button></section><AdminOperations stores={[{id:store.id,name:store.name}]} mode="devices"/></div></main>;
+  return <main className="min-h-svh p-6 lg:p-10"><div className="mx-auto max-w-4xl"><Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 size-4"/>店舗一覧へ戻る</Button><h1 className="mt-4 text-3xl font-bold">{store.name} 詳細</h1><section className="mt-6 rounded-2xl border bg-white p-6"><h2 className="text-xl font-bold">基本情報</h2><div className="mt-4 grid gap-4 sm:grid-cols-2"><label>店舗名<Input value={name} onChange={e=>setName(e.target.value)}/></label><label>店舗コード<Input value={store.code} disabled/></label><label>エリア<Input value={area} onChange={e=>setArea(e.target.value)}/></label><label>通知メール<Input type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>登録タブレット台数<Input type="number" min="0" value={count} onChange={e=>setCount(e.target.value)}/></label><label className="flex items-center gap-2 pt-6"><Checkbox checked={active} onCheckedChange={v=>setActive(Boolean(v))}/>店舗を有効にする</label></div>{email&&<p className="mt-3 text-xs text-slate-500">このメールアドレスへログイン用の認証コードが送信されます。</p>}{error&&<p className="mt-3 text-sm text-red-600">{error}</p>}<Button className="mt-5" onClick={()=>void save()} disabled={saving}>保存</Button></section><AdminOperations stores={[{id:store.id,name:store.name}]} mode="devices" initialStoreId={store.id}/></div></main>;
 }
 
 function AdminStoreManagement({
@@ -1408,7 +1387,6 @@ function AdminStoreManagement({
   isSubmitting,
   onAddStore,
   onUpdateStore,
-  onResetPassword,
   onDeleteStore,
 }: {
   stores: Store[];
@@ -1416,7 +1394,6 @@ function AdminStoreManagement({
   isSubmitting: boolean;
   onAddStore: (store: Store, password: string) => void;
   onUpdateStore: (store: Store) => void;
-  onResetPassword: (storeId: string, password: string) => void;
   onDeleteStore: (id: string) => void;
 }) {
   const [deviceCounts, setDeviceCounts] = useState<Record<string, number>>({});
@@ -1440,11 +1417,9 @@ function AdminStoreManagement({
   const [storeName, setStoreName] = useState('');
   const [storeCode, setStoreCode] = useState('');
   const [storeArea, setStoreArea] = useState('大阪');
-  const [storePassword, setStorePassword] = useState('');
-  const [resetPassword, setResetPassword] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Store | null>(null);
-  const [passwordTarget, setPasswordTarget] = useState<Store | null>(null);
   const [detailStore, setDetailStore] = useState<Store | null>(null);
+  const [loggingOutStoreId, setLoggingOutStoreId] = useState<string | null>(null);
 
   const areas = Array.from(new Set(stores.map((store) => store.area))).sort(
     (a, b) => a.localeCompare(b, 'ja'),
@@ -1465,7 +1440,6 @@ function AdminStoreManagement({
     setStoreName('');
     setStoreCode('');
     setStoreArea(areas[0] || '大阪');
-    setStorePassword('');
   };
 
   const openEditEditor = () => {
@@ -1485,7 +1459,7 @@ function AdminStoreManagement({
         name: storeName.trim(),
         area: storeArea.trim(),
       });
-    } else if (editorMode === 'add' && storePassword.length >= 8) {
+    } else if (editorMode === 'add') {
       const code =
         storeCode.trim() ||
         `ST-${String(stores.length + 1).padStart(2, '0')}`;
@@ -1494,7 +1468,7 @@ function AdminStoreManagement({
         code: code.toUpperCase(),
         name: storeName.trim(),
         area: storeArea.trim(),
-      }, storePassword);
+      }, `otp-disabled-${crypto.randomUUID()}`);
     }
     setEditorMode(null);
   };
@@ -1595,6 +1569,10 @@ function AdminStoreManagement({
                             <TableCell className="font-semibold text-blue-700"><button onClick={() => setDetailStore(store)} className="hover:underline">{store.name}</button></TableCell>
                             <TableCell className="text-xs">{store.notificationEmail || '未設定'}</TableCell>
                             <TableCell>
+                              <p className="text-sm">{store.registeredTabletCount ?? '未設定'} / {deviceCounts[store.id] ?? 0}台</p>
+                              {alertCounts[store.id] ? <p className="text-xs font-bold text-amber-700">警告 {alertCounts[store.id]}件</p> : <p className="text-xs text-emerald-600">正常</p>}
+                            </TableCell>
+                            <TableCell>
                               {assignedMenus.length ? (
                                 <div className="space-y-1 text-sm text-slate-700">
                                   {assignedMenus.map((menu) => (
@@ -1608,10 +1586,6 @@ function AdminStoreManagement({
                               )}
                             </TableCell>
                             <TableCell>
-                              <p className="text-sm">{store.registeredTabletCount ?? '未設定'} / {deviceCounts[store.id] ?? 0}台</p>
-                              {alertCounts[store.id] ? <p className="text-xs font-bold text-amber-700">警告 {alertCounts[store.id]}件</p> : <p className="text-xs text-emerald-600">正常</p>}
-                            </TableCell>
-                            <TableCell>
                               <div className="space-y-1">
                                 <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${store.lastLoginAt ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                                   {store.lastLoginAt ? 'ログイン済み' : '未ログイン'}
@@ -1622,16 +1596,22 @@ function AdminStoreManagement({
                               </div>
                             </TableCell>
                             <TableCell className="pr-6 text-right">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={isSubmitting}
-                                className="rounded-lg text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
-                                onClick={() => setDeleteTarget(store)}
-                              >
-                                <Trash2 className="mr-1 size-3.5" />
-                                削除
-                              </Button>
+                              <div className="flex flex-wrap justify-end gap-2">
+                                <Button variant="outline" size="sm" disabled={isSubmitting || loggingOutStoreId === store.id} className="rounded-lg" onClick={async () => {
+                                  const activeCount = deviceCounts[store.id] ?? 0;
+                                  if (!window.confirm(`${store.name}の全端末をログアウトしますか？\n\n現在認証中の${activeCount}台がログアウトされます。\n次回利用時にはOTPによる再認証が必要です。`)) return;
+                                  setLoggingOutStoreId(store.id);
+                                  try {
+                                    const session = await getCurrentSession();
+                                    if (!session?.access_token) throw new Error('認証が必要です');
+                                    const response = await fetch('/api/admin/stores/revoke-all', { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: store.id, reason: 'admin_revoke_all' }) });
+                                    if (!response.ok) { const body = await response.json() as { error?: string }; throw new Error(body.error || 'ログアウトに失敗しました'); }
+                                    setDeviceCounts((current) => ({ ...current, [store.id]: 0 }));
+                                  } catch (error) { alert(error instanceof Error ? error.message : 'ログアウトに失敗しました'); }
+                                  finally { setLoggingOutStoreId(null); }
+                                }}>{loggingOutStoreId === store.id ? '処理中...' : '全端末をログアウト'}</Button>
+                                <Button variant="outline" size="sm" disabled={isSubmitting} className="rounded-lg text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => setDeleteTarget(store)}><Trash2 className="mr-1 size-3.5" />削除</Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -1653,8 +1633,8 @@ function AdminStoreManagement({
               <DialogTitle>{editorMode === 'edit' ? '店舗情報を変更' : '店舗を追加'}</DialogTitle>
               <DialogDescription>
                 {editorMode === 'edit'
-                  ? '店舗コードはSupabase AuthのログインIDと連動するため、この画面では変更できません。'
-                  : '店舗コード、店舗名、所属エリアと初期パスワードを入力してください。'}
+                  ? '店舗コードは変更できません。OTP送信先メールアドレスと登録端末数は店舗詳細から設定します。'
+                  : '店舗コード、店舗名、所属エリアを入力してください。店舗側の認証はOTPを利用します。'}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -1692,48 +1672,12 @@ function AdminStoreManagement({
                 <label className="mb-1 block text-xs font-bold text-slate-700">所属エリア<span className="ml-1 text-red-500">*</span></label>
                 <Input value={storeArea} onChange={(event) => setStoreArea(event.target.value)} placeholder="例：大阪、東京、福岡" className="rounded-xl" required disabled={isSubmitting} />
               </div>
-              {editorMode === 'add' && (
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-700">初期パスワード<span className="ml-1 text-red-500">*</span></label>
-                  <Input type="password" value={storePassword} onChange={(event) => setStorePassword(event.target.value)} placeholder="8文字以上" className="rounded-xl" required minLength={8} disabled={isSubmitting} />
-                  <p className="mt-1 text-[11px] text-slate-500">作成後に平文のパスワードを再表示することはできません。</p>
-                </div>
-              )}
+              {editorMode === 'add' && <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">店舗側のログインはOTP認証です。登録後、店舗詳細からOTP送信先メールアドレスを設定してください。</p>}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditorMode(null)} disabled={isSubmitting}>キャンセル</Button>
-                <Button type="submit" disabled={!storeName.trim() || !storeArea.trim() || (editorMode === 'add' && storePassword.length < 8) || isSubmitting} className="bg-blue-600 text-white hover:bg-blue-700">
+                <Button type="submit" disabled={!storeName.trim() || !storeArea.trim() || isSubmitting} className="bg-blue-600 text-white hover:bg-blue-700">
                   {isSubmitting ? <><Loader2 className="mr-2 size-4 animate-spin" />保存中...</> : editorMode === 'edit' ? '変更を保存' : '店舗を追加'}
                 </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={Boolean(passwordTarget)}
-          onOpenChange={(open) => !open && setPasswordTarget(null)}
-        >
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>店舗パスワードを再設定</DialogTitle>
-              <DialogDescription>
-                {passwordTarget ? `${passwordTarget.code} — ${passwordTarget.name}` : ''}
-                {' の新しいログインパスワードを設定します。現在のパスワードは表示できません。'}
-              </DialogDescription>
-            </DialogHeader>
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!passwordTarget || resetPassword.length < 8 || isSubmitting) return;
-                onResetPassword(passwordTarget.id, resetPassword);
-                setPasswordTarget(null);
-              }}
-            >
-              <Input type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="8文字以上の新しいパスワード" minLength={8} required disabled={isSubmitting} />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setPasswordTarget(null)} disabled={isSubmitting}>キャンセル</Button>
-                <Button type="submit" disabled={resetPassword.length < 8 || isSubmitting} className="bg-blue-600 text-white hover:bg-blue-700">再設定する</Button>
               </DialogFooter>
             </form>
           </DialogContent>
