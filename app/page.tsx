@@ -91,7 +91,12 @@ import {
   createManagedAdminUser,
   resetManagedAdminPassword,
   resetManagedStorePassword,
+  fetchStoreAuthMenuPdf,
+  StoreAuthMenu,
+  StoreAuthSession,
 } from '@/lib/supabase-api';
+import { getCachedPdf, removeCachedPdfsExcept } from '@/lib/pdf-cache';
+import { StoreOtpLogin } from '@/components/store-otp-login';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 
 export type Screen =
@@ -124,6 +129,7 @@ export type MenuPdf = {
   createdAt: string;
   updatedAt: string;
   storeIds: string[];
+  source?: 'store-auth';
 };
 
 export type ApiStatus = 'unconfigured' | 'loading' | 'ready' | 'error';
@@ -299,7 +305,12 @@ export default function HomePage() {
 
     const targetMenu = menus.find((m) => m.id === menuId);
     // IndexedDB/メモリに同じupdatedAtのPDFがあればStorageにアクセスしない。
-    if (
+    if (targetMenu?.source === 'store-auth' && (!targetMenu.pdfData || forceRefresh)) {
+      setIsPdfLoading(true);
+      try { const pdfData = await fetchStoreAuthMenuPdf(targetMenu.id, targetMenu.updatedAt, forceRefresh); setMenus((prev) => prev.map((m) => (m.id === menuId ? { ...m, pdfData } : m))); }
+      catch (err) { setPdfError(err instanceof Error ? err.message : 'PDFの読み込みに失敗しました'); }
+      finally { setIsPdfLoading(false); }
+    } else if (
       targetMenu?.storagePath &&
       (!targetMenu.pdfData || forceRefresh) &&
       isSupabaseConfigured()
@@ -534,6 +545,17 @@ export default function HomePage() {
     }
   };
 
+  const prepareStoreAuthMenus = useCallback(async (session: StoreAuthSession, authMenus: StoreAuthMenu[]) => {
+    if (!session.store) throw new Error('店舗情報を取得できませんでした');
+    const assigned = authMenus.map((menu) => ({ id: menu.id, title: menu.title, fileName: menu.fileName, createdAt: menu.createdAt, updatedAt: menu.updatedAt, storeIds: [session.store!.id], isPublished: true, source: 'store-auth' as const }));
+    setStoreId(session.store.id); setStores([{ ...session.store }]); setApiStatus('ready');
+    await removeCachedPdfsExcept(assigned.map((m) => m.id));
+    const cached = new Map<string, Blob>(); const pending: typeof assigned = [];
+    for (const menu of assigned) { const blob = await getCachedPdf(menu.id, menu.updatedAt); if (blob) cached.set(menu.id, blob); else pending.push(menu); }
+    if (pending.length) { setSyncProgress({ complete: 0, total: pending.length }); setScreen('sync'); for (let i = 0; i < pending.length; i++) { cached.set(pending[i].id, await fetchStoreAuthMenuPdf(pending[i].id, pending[i].updatedAt)); setSyncProgress({ complete: i + 1, total: pending.length }); } }
+    const ready = assigned.map(m => ({ ...m, pdfData: cached.get(m.id) })); setMenus(ready); if (ready.length === 1) { setActiveId(ready[0].id); setReturnScreen('store-list'); setScreen('viewer'); } else setScreen('store-list');
+  }, []);
+
   useEffect(() => {
     if (
       didResumeSessionRef.current ||
@@ -627,9 +649,10 @@ export default function HomePage() {
 
   // 1. 統合ログイン画面
   if (screen === 'login') {
+    if (loginMode === 'store') return <StoreOtpLogin onAuthenticated={prepareStoreAuthMenus} />;
     return (
       <UnifiedLogin
-        mode={loginMode}
+        mode="admin"
         stores={stores}
         apiStatus={apiStatus}
         errorMessage={errorMessage}

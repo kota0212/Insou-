@@ -42,6 +42,165 @@ export interface ManagedAdminUser {
   lastSignInAt: string | null;
 }
 
+export interface StoreAuthSession {
+  authenticated: boolean;
+  clearCache?: boolean;
+  reason?: string;
+  store?: {
+    id: string;
+    code: string;
+    name: string;
+    area: string;
+  };
+  session?: {
+    deviceId: string;
+    deviceName: string | null;
+    expiresAt: string;
+  };
+}
+
+export interface StoreAuthMenu {
+  id: string;
+  title: string;
+  fileName?: string;
+  createdAt: string;
+  updatedAt: string;
+  pdfUpdatedAt?: string;
+}
+
+async function storeAuthRequest<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<{ response: Response; payload: T }> {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      Accept: 'application/json',
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...init.headers,
+    },
+    cache: 'no-store',
+  });
+  const payload = (await response.json().catch(() => ({}))) as T;
+  return { response, payload };
+}
+
+export async function searchStoreAuthStores(
+  query: string,
+  signal?: AbortSignal,
+): Promise<SupabaseStore[]> {
+  const { response, payload } = await storeAuthRequest<{
+    stores?: SupabaseStore[];
+    error?: string;
+  }>(`/api/store-auth/stores?q=${encodeURIComponent(query)}`, { signal });
+  if (!response.ok) throw new Error(payload.error || '店舗検索に失敗しました。');
+  return payload.stores ?? [];
+}
+
+export async function requestStoreOtp(params: {
+  storeId: string;
+  deviceId: string;
+}): Promise<{ challengeId: string; maskedEmail: string; expiresInSeconds: number }> {
+  const { response, payload } = await storeAuthRequest<{
+    success?: boolean;
+    challengeId?: string;
+    maskedEmail?: string;
+    expiresInSeconds?: number;
+    error?: string;
+  }>('/api/store-auth/request-otp', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  if (!response.ok || !payload.success || !payload.challengeId) {
+    throw new Error(payload.error || '認証コードの送信に失敗しました。');
+  }
+  return {
+    challengeId: payload.challengeId,
+    maskedEmail: payload.maskedEmail ?? '',
+    expiresInSeconds: payload.expiresInSeconds ?? 900,
+  };
+}
+
+export async function verifyStoreOtp(params: {
+  challengeId: string;
+  otp: string;
+  deviceId: string;
+  deviceName?: string;
+}): Promise<void> {
+  const { response, payload } = await storeAuthRequest<{
+    success?: boolean;
+    error?: string;
+  }>('/api/store-auth/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  if (!response.ok || !payload.success) {
+    throw new Error(payload.error || '認証コードの確認に失敗しました。');
+  }
+}
+
+export async function fetchStoreAuthSession(): Promise<StoreAuthSession> {
+  const { payload } = await storeAuthRequest<StoreAuthSession>(
+    '/api/store-auth/session',
+  );
+  return payload;
+}
+
+export async function fetchStoreAuthMenus(): Promise<{
+  store: { id: string; name: string };
+  menus: StoreAuthMenu[];
+}> {
+  const { response, payload } = await storeAuthRequest<{
+    store?: { id: string; name: string };
+    menus?: StoreAuthMenu[];
+    error?: string;
+    clearCache?: boolean;
+  }>('/api/store-auth/menus');
+  if (!response.ok || !payload.store) {
+    const error = new Error(payload.error || '店舗メニューの取得に失敗しました。');
+    (error as Error & { clearCache?: boolean }).clearCache = payload.clearCache;
+    throw error;
+  }
+  return { store: payload.store, menus: payload.menus ?? [] };
+}
+
+export async function fetchStoreAuthMenuPdf(
+  menuId: string,
+  updatedAt: string,
+  forceRefresh = false,
+): Promise<Blob> {
+  const key = `${menuId}:${updatedAt}`;
+  if (!forceRefresh) {
+    const memory = pdfMemoryCache.get(key);
+    if (memory) return memory;
+    const cached = await getCachedPdf(menuId, updatedAt);
+    if (cached && (await isPdfBlob(cached))) {
+      pdfMemoryCache.set(key, cached);
+      return cached;
+    }
+  }
+
+  if (forceRefresh) await removeCachedPdf(menuId);
+  const { response, payload } = await storeAuthRequest<{
+    signedUrl?: string;
+    error?: string;
+    clearCache?: boolean;
+  }>(`/api/store-auth/pdf/${encodeURIComponent(menuId)}`);
+  if (!response.ok || !payload.signedUrl) {
+    const error = new Error(payload.error || 'PDFの取得に失敗しました。');
+    (error as Error & { clearCache?: boolean }).clearCache = payload.clearCache;
+    throw error;
+  }
+
+  const pdfResponse = await fetch(payload.signedUrl, { cache: 'no-store' });
+  if (!pdfResponse.ok) throw new Error('PDFの取得に失敗しました。');
+  const blob = await pdfResponse.blob();
+  if (!(await isPdfBlob(blob))) throw new Error('取得したファイルは有効なPDFではありません。');
+  await storeCachedPdf(menuId, updatedAt, blob);
+  pdfMemoryCache.set(key, blob);
+  return blob;
+}
+
 type MenuRow = {
   id: string;
   title: string;
