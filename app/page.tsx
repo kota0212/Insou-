@@ -67,7 +67,6 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
 } from '@/components/ui/sidebar';
@@ -1209,14 +1208,15 @@ function AdminShell({
               <SidebarMenu className="gap-1.5">
                 {items.map((item) => (
                   <SidebarMenuItem key={item.label}>
-                    <SidebarMenuButton
-                      isActive={current === item.screen}
+                    <button
+                      type="button"
+                      aria-current={current === item.screen ? 'page' : undefined}
                       onClick={() => onNavigate(item.screen)}
-                      className="h-11 rounded-xl px-3 text-sm data-[active=true]:bg-blue-50 data-[active=true]:font-semibold data-[active=true]:text-blue-700"
+                      className={`flex h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm transition-colors ${current === item.screen ? 'bg-blue-50 font-semibold text-blue-700' : 'hover:bg-slate-100'}`}
                     >
-                      <item.icon />
+                      <item.icon className="size-4" />
                       {item.label}
-                    </SidebarMenuButton>
+                    </button>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
