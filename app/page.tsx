@@ -1418,6 +1418,12 @@ function AdminUserManagement({ isPrototype }: { isPrototype: boolean }) {
 // ==========================================
 // 2. 店舗管理画面 (AdminStoreManagement)
 // ==========================================
+function StoreDetailPanel({ store, onBack, onSaved }: { store: Store; onBack: () => void; onSaved: (store: Store) => void }) {
+  const [name, setName] = useState(store.name); const [area, setArea] = useState(store.area); const [email, setEmail] = useState(store.notificationEmail ?? ''); const [count, setCount] = useState(store.registeredTabletCount?.toString() ?? ''); const [active, setActive] = useState(store.isActive !== false); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
+ const save = async () => { setSaving(true); setError(''); try { const session = await getCurrentSession(); if (!session?.access_token) throw new Error('認証が必要です'); const res = await fetch('/api/admin/stores',{method:'PATCH',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({storeId:store.id,name,area,notification_email:email,registered_tablet_count:count===''?null:Number(count),is_active:active})}); const body=await res.json() as {error?: string}; if(!res.ok) throw new Error(body.error); onSaved({...store,name,area,notificationEmail:email||undefined,registeredTabletCount:count===''?null:Number(count),isActive:active}); } catch(e){setError(e instanceof Error?e.message:'保存に失敗しました')} finally{setSaving(false)} };
+  return <main className="min-h-svh p-6 lg:p-10"><div className="mx-auto max-w-4xl"><Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 size-4"/>店舗一覧へ戻る</Button><h1 className="mt-4 text-3xl font-bold">{store.name} 詳細</h1><section className="mt-6 rounded-2xl border bg-white p-6"><h2 className="text-xl font-bold">基本情報</h2><div className="mt-4 grid gap-4 sm:grid-cols-2"><label>店舗名<Input value={name} onChange={e=>setName(e.target.value)}/></label><label>店舗コード<Input value={store.code} disabled/></label><label>エリア<Input value={area} onChange={e=>setArea(e.target.value)}/></label><label>通知メール<Input type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>登録タブレット台数<Input type="number" min="0" value={count} onChange={e=>setCount(e.target.value)}/></label><label className="flex items-center gap-2 pt-6"><Checkbox checked={active} onCheckedChange={v=>setActive(Boolean(v))}/>店舗を有効にする</label></div>{error&&<p className="mt-3 text-sm text-red-600">{error}</p>}<Button className="mt-5" onClick={()=>void save()} disabled={saving}>保存</Button></section><AdminOperations stores={[{id:store.id,name:store.name}]} mode="devices"/></div></main>;
+}
+
 function AdminStoreManagement({
   stores,
   menus,
@@ -1460,11 +1466,13 @@ function AdminStoreManagement({
   const [resetPassword, setResetPassword] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Store | null>(null);
   const [passwordTarget, setPasswordTarget] = useState<Store | null>(null);
+  const [detailStore, setDetailStore] = useState<Store | null>(null);
 
   const areas = Array.from(new Set(stores.map((store) => store.area))).sort(
     (a, b) => a.localeCompare(b, 'ja'),
   );
   const selectedStore = stores.find((store) => store.id === editingStoreId);
+  if (detailStore) return <StoreDetailPanel store={detailStore} onBack={() => setDetailStore(null)} onSaved={(s) => { onUpdateStore(s); setDetailStore(s); }} />;
 
   const populateEditor = (store: Store) => {
     setEditingStoreId(store.id);
@@ -1605,7 +1613,7 @@ function AdminStoreManagement({
                                 {store.code || store.id}
                               </span>
                             </TableCell>
-                            <TableCell className="font-semibold text-slate-900">{store.name}</TableCell>
+                            <TableCell className="font-semibold text-blue-700"><button onClick={() => setDetailStore(store)} className="hover:underline">{store.name}</button></TableCell>
                             <TableCell>
                               {assignedMenus.length ? (
                                 <div className="space-y-1 text-sm text-slate-700">

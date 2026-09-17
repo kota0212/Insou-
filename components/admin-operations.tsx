@@ -60,6 +60,10 @@ export function AdminOperations({
   const [devices, setDevices] = useState<Device[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [logs, setLogs] = useState<Log[]>([]);
+  const [severity, setSeverity] = useState("");
+  const [action, setAction] = useState("");
+  const [actorType, setActorType] = useState("");
+  const [unresolved, setUnresolved] = useState(true);
   const [loading, setLoading] = useState(true);
   const reload = useCallback(async () => {
     setLoading(true);
@@ -70,16 +74,18 @@ export function AdminOperations({
         );
         setDevices(((await r.json()) as { devices?: Device[] }).devices || []);
       } else if (mode === "alerts") {
-        const r = await authFetch("/api/admin/security-alerts?unresolved=true");
+        const p = new URLSearchParams(); if (unresolved) p.set("unresolved", "true"); if (storeId) p.set("storeId", storeId); if (severity) p.set("severity", severity);
+        const r = await authFetch(`/api/admin/security-alerts?${p}`);
         setAlerts(((await r.json()) as { alerts?: Alert[] }).alerts || []);
       } else {
-        const r = await authFetch("/api/admin/audit-logs");
+        const p = new URLSearchParams(); if (storeId) p.set("storeId", storeId); if (action) p.set("action", action); if (actorType) p.set("actorType", actorType);
+        const r = await authFetch(`/api/admin/audit-logs?${p}`);
         setLogs(((await r.json()) as { logs?: Log[] }).logs || []);
       }
     } finally {
       setLoading(false);
     }
-  }, [mode, storeId]);
+  }, [mode, storeId, severity, action, actorType, unresolved]);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -165,6 +171,7 @@ export function AdminOperations({
     return (
       <section className="p-6">
         <h1 className="mb-4 text-2xl font-bold">Security Alerts</h1>
+        <div className="mb-4 flex flex-wrap gap-2"><select className="rounded border p-2" value={storeId} onChange={e=>setStoreId(e.target.value)}><option value="">全店舗</option>{stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><select className="rounded border p-2" value={severity} onChange={e=>setSeverity(e.target.value)}><option value="">全severity</option><option value="critical">critical</option><option value="warning">warning</option><option value="info">info</option></select><label className="flex items-center gap-2"><input type="checkbox" checked={unresolved} onChange={e=>setUnresolved(e.target.checked)}/>未解決のみ</label></div>
         {alerts.map((a) => (
           <div key={a.id} className="mb-3 rounded-xl border bg-white p-4">
             <b>{stores.find((s) => s.id === a.store_id)?.name || "店舗"}</b>
@@ -196,6 +203,7 @@ export function AdminOperations({
   return (
     <section className="p-6">
       <h1 className="mb-4 text-2xl font-bold">監査ログ</h1>
+      <div className="mb-4 flex flex-wrap gap-2"><select className="rounded border p-2" value={storeId} onChange={e=>setStoreId(e.target.value)}><option value="">全店舗</option>{stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><input className="rounded border p-2" placeholder="action" value={action} onChange={e=>setAction(e.target.value)}/><input className="rounded border p-2" placeholder="actor_type" value={actorType} onChange={e=>setActorType(e.target.value)}/></div>
       {logs.map((l) => (
         <div key={l.id} className="border-b py-3 text-sm">
           <span>{new Date(l.occurred_at).toLocaleString("ja-JP")}</span>　
