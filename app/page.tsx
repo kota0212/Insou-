@@ -1313,6 +1313,36 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
     }
   };
 
+  const handleDelete = async (user: import('@/lib/supabase-api').ManagedAdminUser) => {
+    setError('');
+    if (user.id === currentAdminId) {
+      setError('自分自身のアカウントは削除できません。');
+      return;
+    }
+    if (users.length <= 1) {
+      setError('最後の管理者は削除できません。');
+      return;
+    }
+    if (!window.confirm(`この管理者アカウントを削除しますか？\n${user.email}\n削除後、このアカウントでは管理画面へログインできなくなります。`)) return;
+    setSubmitting(true);
+    try {
+      const session = await getCurrentSession();
+      if (!session?.access_token) throw new Error('管理者セッションが失効しています。再ログインしてください。');
+      const response = await fetch(`/api/admin/users?id=${user.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(body.error || '管理者削除処理に失敗しました。');
+      setUsers((current) => current.filter((item) => item.id !== user.id));
+      alert('管理者アカウントを削除しました。');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '管理者削除処理に失敗しました。');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <main className="min-h-svh p-6 lg:p-10">
       <div className="mx-auto max-w-5xl">
@@ -1343,7 +1373,7 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
             <Table>
               <TableHeader><TableRow className="bg-slate-50/80"><TableHead className="pl-6">メールアドレス</TableHead><TableHead>登録日</TableHead><TableHead>最終ログイン</TableHead><TableHead className="pr-6 text-right">操作</TableHead></TableRow></TableHeader>
               <TableBody>{users.map((user) => (
-                <TableRow key={user.id}><TableCell className="pl-6 font-medium">{user.email}{user.invitedAt && !user.lastSignInAt && <span className="ml-2 rounded bg-amber-50 px-2 py-1 text-xs font-normal text-amber-700">招待中</span>}</TableCell><TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell><TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell><TableCell className="pr-6 text-right"><div className="flex justify-end gap-2">{!deleteMode && <Button variant="outline" size="sm" onClick={() => setResetTarget(user)}>パスワード再設定メールを送信</Button>}{deleteMode && (user.id === currentAdminId ? <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-500">現在ログイン中・削除不可</span> : <Button variant="outline" size="sm" className="text-red-600" onClick={async () => { if (!window.confirm(`この管理者アカウントを削除しますか？\n${user.email}\n削除後、このアカウントでは管理画面へログインできなくなります。`)) return; const session=await getCurrentSession(); if(!session?.access_token)return; const response=await fetch(`/api/admin/users?id=${user.id}`,{method:'DELETE',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'}}); if(response.ok) await reload(); else { const b=await response.json() as {error?:string}; alert(b.error||'削除に失敗しました'); } }}>この管理者を削除</Button>)}</div></TableCell></TableRow>
+                <TableRow key={user.id}><TableCell className="pl-6 font-medium">{user.email}{user.invitedAt && !user.lastSignInAt && <span className="ml-2 rounded bg-amber-50 px-2 py-1 text-xs font-normal text-amber-700">招待中</span>}</TableCell><TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell><TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell><TableCell className="pr-6 text-right"><div className="flex justify-end gap-2">{!deleteMode && <Button variant="outline" size="sm" onClick={() => setResetTarget(user)}>パスワード再設定メールを送信</Button>}{deleteMode && (user.id === currentAdminId ? <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-500">現在ログイン中・削除不可</span> : <Button variant="outline" size="sm" className="text-red-600" disabled={submitting || users.length <= 1} onClick={() => void handleDelete(user)}>この管理者を削除</Button>)}</div></TableCell></TableRow>
               ))}</TableBody>
             </Table>
           )}

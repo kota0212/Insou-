@@ -108,6 +108,14 @@ try {
     { onConflict: 'user_id' },
   );
   assert(!profileInsert.error, `temporary admin profile creation (${profileInsert.error?.code ?? 'ok'})`);
+  const historyInsert = await client.from('audit_logs').insert({
+    actor_type: 'system',
+    action: 'admin_test_history',
+    target_type: 'admin_user',
+    target_id: temporaryAdminId,
+    metadata: {},
+  });
+  assert(!historyInsert.error, 'admin history fixture creation');
   const removed = await deleteAdmin(req(`/api/admin/users?id=${temporaryAdminId}`, { method: 'DELETE' }));
   assert(removed.status === 200, 'temporary admin deletion');
   const deletedUser = await client.auth.admin.getUserById(temporaryAdminId);
@@ -116,6 +124,8 @@ try {
   assert(!deletedProfile.data, 'deleted admin profile removed');
   const deletionLog = await client.from('audit_logs').select('action').eq('target_id', temporaryAdminId).eq('action', 'admin_deleted').maybeSingle();
   assert(Boolean(deletionLog.data), 'admin deletion operation logged');
+  const retainedHistory = await client.from('audit_logs').select('action').eq('target_id', temporaryAdminId).eq('action', 'admin_test_history').maybeSingle();
+  assert(Boolean(retainedHistory.data), 'admin history retained after account deletion');
   temporaryAdminId = undefined;
 } finally {
   if (temporaryAdminId) {
