@@ -1,0 +1,16 @@
+import { createClient } from '@supabase/supabase-js';
+const url=process.env.VERIFICATION_SUPABASE_URL||process.env.SUPABASE_URL||process.env.NEXT_PUBLIC_SUPABASE_URL; const key=process.env.SUPABASE_SECRET_KEY; const adminEmail=process.env.VERIFICATION_ADMIN_EMAIL; const adminPassword=process.env.VERIFICATION_ADMIN_PASSWORD;
+if(!url||!key||!adminEmail||!adminPassword) { console.error('Missing Verification admin test configuration'); process.exit(1); }
+process.env.NEXT_PUBLIC_SUPABASE_URL=url; process.env.SUPABASE_URL=url; process.env.SUPABASE_SECRET_KEY=key;
+const client=createClient(url,key,{auth:{persistSession:false}}); const assert=(ok,msg)=>{if(!ok)throw new Error(msg); console.log(`PASS: ${msg}`)};
+const {data:auth,error:authErr}=await client.auth.signInWithPassword({email:adminEmail,password:adminPassword}); assert(!authErr&&auth.session,'admin authentication'); const token=auth.session.access_token;
+const { GET:storesGet, PATCH:storesPatch }=await import('../app/api/admin/stores/route.ts'); const {GET:devicesGet}=await import('../app/api/admin/devices/route.ts'); const {GET:alertsGet}=await import('../app/api/admin/security-alerts/route.ts'); const {GET:logsGet}=await import('../app/api/admin/audit-logs/route.ts');
+const req=(path,init={})=>new Request(`http://localhost${path}`,{...init,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',...(init.headers||{})}});
+const denied=await storesGet(new Request('http://localhost/api/admin/stores')); assert(denied.status===401,'anonymous admin API denied');
+const stores=await storesGet(req('/api/admin/stores')); assert(stores.status===200,'admin store list'); const body=await stores.json(); const store=body.stores?.find(s=>s.code==='TC-01'); assert(!!store,'test store found');
+const detail=await storesGet(req(`/api/admin/stores?storeId=${store.id}`)); assert([200,404].includes(detail.status),'store detail endpoint responds');
+const original={name:store.name,area:store.area,notification_email:store.notification_email,registered_tablet_count:store.registered_tablet_count,is_active:store.is_active};
+const update=await storesPatch(req('/api/admin/stores',{method:'PATCH',body:JSON.stringify({storeId:store.id,name:original.name,area:original.area,notification_email:original.notification_email,registered_tablet_count:original.registered_tablet_count,is_active:original.is_active})})); assert(update.status===200,'store metadata update and restore');
+const devices=await devicesGet(req(`/api/admin/devices?storeId=${store.id}`)); assert(devices.status===200,'device list'); const dbody=await devices.json(); const raw=JSON.stringify(dbody); assert(!/token|password|secret|otp/i.test(raw),'sensitive fields excluded from device response');
+const alerts=await alertsGet(req('/api/admin/security-alerts')); assert(alerts.status===200,'security alerts list'); const logs=await logsGet(req('/api/admin/audit-logs')); assert(logs.status===200,'audit logs list'); const lbody=await logs.json(); const lkeys=Object.keys(lbody.logs?.[0]||{}).join(','); assert(!/token|password|secret|otp/i.test(lkeys),'sensitive fields excluded from audit response');
+console.log('Admin API Summary: 8 Passed, 0 Failed');

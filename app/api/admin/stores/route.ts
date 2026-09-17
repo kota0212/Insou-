@@ -16,6 +16,15 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+export async function GET(request: Request) {
+  try {
+    const { client } = await requireAdmin(request);
+    const { data, error } = await client.from('stores').select('id,code,name,area,notification_email,registered_tablet_count,is_active,password_updated_at,last_login_at').order('code');
+    if (error) throw error;
+    return Response.json({ stores: data ?? [] });
+  } catch (error) { return adminApiErrorResponse(error); }
+}
+
 type CreateStoreBody = {
   code?: unknown;
   name?: unknown;

@@ -11,6 +11,7 @@
     "start": "next start",
     "bootstrap:auth": "node --env-file=.env.local scripts/bootstrap-auth-users.mjs",
     "test:store-auth": "tsx --env-file=.env.verification.local scripts/test-store-auth.mjs",
+    "test:admin-api": "tsx --env-file=.env.verification.local scripts/test-admin-api.mjs",
     "lint": "oxlint",
     "format": "oxfmt"
   },
