@@ -127,6 +127,21 @@ export async function POST(request: Request) {
     });
 
     if (!emailResult.success) {
+      // 配信されなかったコードは利用不能にする。create_store_otp_challenge は
+      // 同一店舗の古い issued challenge も無効化済みのため、ここで残る
+      // issued challenge を無効化すると未配信コードを確実に残さない。
+      const { error: invalidateError } = await client.rpc(
+        'invalidate_store_otp_challenges',
+        { p_store_id: storeId },
+      );
+
+      if (invalidateError) {
+        console.error(
+          '[INVALIDATE_OTP_CHALLENGE_AFTER_EMAIL_FAILURE]',
+          invalidateError.message,
+        );
+      }
+
       await recordStoreAuthAudit({
         action: 'otp_request_failed',
         actorType: 'store',
@@ -134,7 +149,8 @@ export async function POST(request: Request) {
         metadata: {
           ip,
           challengeId,
-          error: emailResult.error,
+          reason: 'email_delivery_failed',
+          challengeInvalidated: !invalidateError,
         },
       });
       return Response.json(

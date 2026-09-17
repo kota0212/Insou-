@@ -57,13 +57,13 @@ export async function sendStoreOtpEmail(
     const { error } = await resend.emails.send({
       from: fromEmail,
       to: [params.to],
-      subject: '【INSOU】店舗認証コード（ワンタイムパスワード）',
+      subject: '【INSOU】店舗端末の認証コード',
       text: [
         `INSOU メニュー閲覧システム`,
         ``,
         `${params.storeName} ご担当者様`,
         ``,
-        `端末の認証コード（ワンタイムパスワード）を発行しました。`,
+        `端末の認証コードを発行しました。`,
         `以下の6桁の認証コードを端末の入力画面に入力してください。`,
         ``,
         `認証コード: ${params.otp}`,
@@ -79,7 +79,7 @@ export async function sendStoreOtpEmail(
           </div>
           <p style="font-size: 15px; margin-bottom: 16px;"><strong>${escapeHtml(params.storeName)}</strong> ご担当者様</p>
           <p style="font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
-            端末の認証コード（ワンタイムパスワード）を発行しました。<br />
+            端末の認証コードを発行しました。<br />
             以下の6桁の認証コードを端末の認証画面に入力してください。
           </p>
           <div style="background-color: #f3f4f6; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">

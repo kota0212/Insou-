@@ -451,6 +451,37 @@ Production影響:
 あり
 
 
+### TODO 6. 漏洩済みVerification旧Secret Keyの失効
+
+状態:
+TODO / 利用先最終確認待ち
+
+現状:
+Verificationでは新形式の`SUPABASE_SECRET_KEY`をVercel Previewの
+`migrate/vexum-canonical`スコープに設定済みで、現行のServer code・
+bootstrap script・Store Auth testはこの変数のみを参照する。
+一方、以前のlegacy `service_role`キーはlegacy `anon`キーと同じ
+一括無効化の対象であり、個別に失効できない。さらにローカル検証用の
+新形式キーが、Verification上で作成済みの専用キーと対応付けられている
+ことを秘密値を開示せずに確認する必要がある。
+
+実施タイミング:
+Verificationの全利用先（ローカル、Preview、CI、外部連携）を新形式キーへ
+対応付けて確認できた後。Productionのキー・設定には触れない。
+
+完了条件:
+- Verificationのローカル、Vercel Preview、CI、スクリプト、外部連携で
+  legacy `service_role`キーを利用していないことを確認
+- ローカル検証用`SUPABASE_SECRET_KEY`がVerification専用の新規キーで
+  あることを安全に確認、または更新
+- Verificationのlegacy API keysを無効化してもanon/service_roleの利用先が
+  ないことを確認
+- 新形式キーによるStore Auth、Admin API、型検査、buildを再確認
+
+Production影響:
+なし
+
+
 ### Phase 1 完了判定ルール
 
 現在:

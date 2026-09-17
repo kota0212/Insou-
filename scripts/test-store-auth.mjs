@@ -8,12 +8,27 @@ const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const OTP_HMAC_SECRET = process.env.OTP_HMAC_SECRET;
+const VERIFICATION_STORE_EMAIL = process.env.VERIFICATION_STORE_EMAIL;
+const VERIFICATION_STORE_CODE = process.env.VERIFICATION_STORE_CODE;
 
-if (!SUPABASE_URL || !SECRET_KEY || !OTP_HMAC_SECRET) {
+if (
+  !SUPABASE_URL ||
+  !SECRET_KEY ||
+  !OTP_HMAC_SECRET ||
+  !VERIFICATION_STORE_EMAIL ||
+  !VERIFICATION_STORE_CODE
+) {
   console.error(
     'Error: Missing required environment variables.\n' +
       'Please run with: node --env-file=.env.verification.local scripts/test-store-auth.mjs\n' +
       'or ensure SUPABASE_URL, SUPABASE_SECRET_KEY, and OTP_HMAC_SECRET are exported.',
+  );
+  process.exit(1);
+}
+
+if (!/@vexum-ai\.com$/i.test(VERIFICATION_STORE_EMAIL)) {
+  console.error(
+    'VERIFICATION_STORE_EMAIL must be a VEXUM-owned test address before running this test.',
   );
   process.exit(1);
 }
@@ -48,6 +63,7 @@ async function runTests() {
   const { data: stores, error: storeErr } = await client
     .from('stores')
     .select('id, code, name, is_active, notification_email')
+    .eq('code', VERIFICATION_STORE_CODE)
     .eq('is_active', true)
     .limit(1);
 
@@ -60,12 +76,17 @@ async function runTests() {
   assert(testStore.is_active === true, 'Test store is active');
 
   if (!testStore.notification_email) {
-    await client
-      .from('stores')
-      .update({ notification_email: 'store-tc01@insou.internal' })
-      .eq('id', testStore.id);
-    testStore.notification_email = 'store-tc01@insou.internal';
-    console.log('  Updated test store notification_email to store-tc01@insou.internal');
+    console.error(
+      'Verification test store has no notification email. Configure a VEXUM-owned test address before running this test.',
+    );
+    process.exit(1);
+  }
+
+  if (testStore.notification_email !== VERIFICATION_STORE_EMAIL) {
+    console.error(
+      'Verification test store notification email does not match the configured VEXUM test address. Update Verification data before running this test.',
+    );
+    process.exit(1);
   }
 
   // 2. Test Store Search API Handler & Information Exposure
@@ -112,6 +133,14 @@ async function runTests() {
   });
   const resFailClosed = await requestOtpHandler(reqFailClosed);
   assert(resFailClosed.status === 502, 'Missing RESEND_API_KEY without dry-run flag fails closed with status 502');
+
+  const { count: issuedAfterFailedDelivery, error: issuedCountError } = await client
+    .from('store_otp_challenges')
+    .select('id', { count: 'exact', head: true })
+    .eq('store_id', testStore.id)
+    .eq('status', 'issued');
+  assert(!issuedCountError, 'Can query issued OTP challenge count after failed delivery');
+  assert(issuedAfterFailedDelivery === 0, 'Failed delivery leaves no usable OTP challenge');
 
   // 3.2 With STORE_AUTH_EMAIL_DRY_RUN=true in non-production -> Allowed for automated testing
   process.env.STORE_AUTH_EMAIL_DRY_RUN = 'true';
