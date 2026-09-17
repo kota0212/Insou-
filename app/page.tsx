@@ -1245,6 +1245,55 @@ function AdminShell({
 // ==========================================
 // 管理者アカウント管理
 // ==========================================
+function AdminUserRow({
+  user,
+  deleteOnly,
+  currentAdminId,
+  currentSessionReady,
+  userCount,
+  submitting,
+  onReset,
+  onDelete,
+}: {
+  user: import('@/lib/supabase-api').ManagedAdminUser;
+  deleteOnly: boolean;
+  currentAdminId: string | null;
+  currentSessionReady: boolean;
+  userCount: number;
+  submitting: boolean;
+  onReset: () => void;
+  onDelete: () => void;
+}) {
+  const isCurrentUser = currentSessionReady && user.id === currentAdminId;
+  const isLastAdmin = userCount <= 1;
+  const canDelete = currentSessionReady && !isCurrentUser && !isLastAdmin;
+  const deletionStatus = !currentSessionReady
+    ? 'ログイン状態を確認中'
+    : isCurrentUser
+      ? '現在ログイン中のため削除できません'
+      : isLastAdmin
+        ? '最後の管理者は削除できません'
+        : '削除可能';
+
+  return (
+    <TableRow>
+      <TableCell className="pl-6 font-medium">
+        {user.email}
+        {user.invitedAt && !user.lastSignInAt && <span className="ml-2 rounded bg-amber-50 px-2 py-1 text-xs font-normal text-amber-700">招待中</span>}
+      </TableCell>
+      <TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell>
+      <TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell>
+      {deleteOnly && <TableCell className="text-sm text-slate-600">{deletionStatus}</TableCell>}
+      <TableCell className="pr-6 text-right">
+        <div className="flex justify-end gap-2">
+          {!deleteOnly && <Button variant="outline" size="sm" onClick={onReset}>パスワード再設定メールを送信</Button>}
+          {deleteOnly && canDelete && <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50 hover:text-red-700" disabled={submitting} onClick={onDelete}>削除</Button>}
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, onBack }: { isPrototype: boolean; deleteOnly?: boolean; onDeletePage?: () => void; onBack?: () => void }) {
   const [users, setUsers] = useState<import('@/lib/supabase-api').ManagedAdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1253,8 +1302,7 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
   const [createOpen, setCreateOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [resetTarget, setResetTarget] = useState<import('@/lib/supabase-api').ManagedAdminUser | null>(null);
-  const [managementOpen, setManagementOpen] = useState(false);
-  const [deleteMode, setDeleteMode] = useState(deleteOnly);
+  const [currentSessionReady, setCurrentSessionReady] = useState(false);
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -1279,7 +1327,18 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
   }, [reload]);
 
   useEffect(() => {
-    void getCurrentSession().then((session) => setCurrentAdminId(session?.user?.id ?? null));
+    let active = true;
+    void getCurrentSession()
+      .then((session) => {
+        if (active) setCurrentAdminId(session?.user?.id ?? null);
+      })
+      .catch(() => {
+        if (active) setCurrentAdminId(null);
+      })
+      .finally(() => {
+        if (active) setCurrentSessionReady(true);
+      });
+    return () => { active = false; };
   }, []);
 
   const handleCreate = async (event: React.SyntheticEvent<HTMLFormElement>) => {
@@ -1315,6 +1374,10 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
 
   const handleDelete = async (user: import('@/lib/supabase-api').ManagedAdminUser) => {
     setError('');
+    if (!currentSessionReady) {
+      setError('ログイン状態を確認中です。少し待ってから再度お試しください。');
+      return;
+    }
     if (user.id === currentAdminId) {
       setError('自分自身のアカウントは削除できません。');
       return;
@@ -1323,7 +1386,7 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
       setError('最後の管理者は削除できません。');
       return;
     }
-    if (!window.confirm(`この管理者アカウントを削除しますか？\n${user.email}\n削除後、このアカウントでは管理画面へログインできなくなります。`)) return;
+    if (!window.confirm(`この管理者アカウントを削除しますか？\n\n対象: ${user.email}\n\nこの操作は元に戻せません。削除後、このアカウントでは管理画面へログインできなくなります。過去の操作ログは保持されます。`)) return;
     setSubmitting(true);
     try {
       const session = await getCurrentSession();
@@ -1349,12 +1412,17 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
         <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="mb-2 text-sm font-medium text-blue-600">アクセス管理</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">{deleteMode ? '管理者を削除' : '管理者の管理'}</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950">{deleteOnly ? '管理者を削除' : '管理者の管理'}</h1>
             <p className="mt-2 text-slate-500">管理画面へログインできるメールアドレスを管理します。</p>
           </div>
-          {!deleteOnly && <Button onClick={() => setManagementOpen(true)} disabled={isPrototype} className="h-11 rounded-xl bg-blue-600 px-4 font-bold text-white hover:bg-blue-700">
-            <Users className="mr-2 size-4" />管理者の管理
-          </Button>}
+          {!deleteOnly && <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setCreateOpen(true)} disabled={isPrototype} className="h-11 rounded-xl bg-blue-600 px-4 font-bold text-white hover:bg-blue-700">
+              <Users className="mr-2 size-4" />管理者を追加
+            </Button>
+            <Button variant="outline" onClick={onDeletePage} disabled={isPrototype} className="h-11 rounded-xl border-red-200 px-4 font-bold text-red-700 hover:bg-red-50 hover:text-red-800">
+              管理者を削除
+            </Button>
+          </div>}
           {deleteOnly && onBack && <Button variant="outline" onClick={onBack}>管理者の管理へ戻る</Button>}
         </header>
 
@@ -1362,29 +1430,26 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
           <div className="border-b border-slate-100 bg-amber-50 px-6 py-4 text-sm text-amber-950">
             パスワードは安全上一覧表示できません。必要な場合は再設定してください。
           </div>
-          {deleteMode && <div className="border-b border-slate-100 bg-slate-50 px-6 py-3 text-sm text-slate-600">現在ログイン中の管理者と最後の1名は削除できません。別の管理者を選択してください。</div>}
+          {deleteOnly && <div className="border-b border-slate-100 bg-slate-50 px-6 py-3 text-sm text-slate-600">現在ログイン中の管理者と最後の1名は削除できません。削除しても過去の操作ログは保持されます。</div>}
           {isPrototype ? (
             <p className="p-8 text-sm text-slate-500">試作モードではアカウント管理を利用できません。</p>
           ) : loading ? (
             <div className="flex items-center gap-2 p-8 text-slate-500"><Loader2 className="size-4 animate-spin" />読み込み中...</div>
-          ) : error ? (
+          ) : error && users.length === 0 ? (
             <div className="p-8"><p className="text-red-600">{error}</p><Button variant="outline" className="mt-4" onClick={() => void reload()}>再読み込み</Button></div>
           ) : (
+            <>
+              {error && <div className="border-b border-red-100 bg-red-50 px-6 py-3 text-sm text-red-700">{error}</div>}
             <Table>
-              <TableHeader><TableRow className="bg-slate-50/80"><TableHead className="pl-6">メールアドレス</TableHead><TableHead>登録日</TableHead><TableHead>最終ログイン</TableHead><TableHead className="pr-6 text-right">操作</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow className="bg-slate-50/80"><TableHead className="pl-6">メールアドレス</TableHead><TableHead>登録日</TableHead><TableHead>最終ログイン</TableHead>{deleteOnly && <TableHead>削除可否</TableHead>}<TableHead className="pr-6 text-right">操作</TableHead></TableRow></TableHeader>
               <TableBody>{users.map((user) => (
-                <TableRow key={user.id}><TableCell className="pl-6 font-medium">{user.email}{user.invitedAt && !user.lastSignInAt && <span className="ml-2 rounded bg-amber-50 px-2 py-1 text-xs font-normal text-amber-700">招待中</span>}</TableCell><TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell><TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell><TableCell className="pr-6 text-right"><div className="flex justify-end gap-2">{!deleteMode && <Button variant="outline" size="sm" onClick={() => setResetTarget(user)}>パスワード再設定メールを送信</Button>}{deleteMode && (user.id === currentAdminId ? <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-500">現在ログイン中・削除不可</span> : <Button variant="outline" size="sm" className="text-red-600" disabled={submitting || users.length <= 1} onClick={() => void handleDelete(user)}>この管理者を削除</Button>)}</div></TableCell></TableRow>
+                <AdminUserRow key={user.id} user={user} deleteOnly={deleteOnly} currentAdminId={currentAdminId} currentSessionReady={currentSessionReady} userCount={users.length} submitting={submitting} onReset={() => setResetTarget(user)} onDelete={() => void handleDelete(user)} />
               ))}</TableBody>
             </Table>
+            </>
           )}
-          {!loading && !error && deleteMode && users.length <= 1 && <p className="border-t border-slate-100 px-6 py-4 text-sm text-slate-500">削除できる管理者がいません。先に「管理者の管理」から別の管理者を追加してください。最後の1名と現在ログイン中の管理者は安全のため削除できません。</p>}
+          {!loading && deleteOnly && users.length <= 1 && <p className="border-t border-slate-100 px-6 py-4 text-sm text-slate-500">削除できる管理者がいません。先に「管理者の管理」から別の管理者を追加してください。最後の1名と現在ログイン中の管理者は安全のため削除できません。</p>}
         </section>
-
-        {deleteMode && !deleteOnly && <Button variant="outline" className="mt-4" onClick={() => setDeleteMode(false)}>管理者一覧へ戻る</Button>}
-
-        <Dialog open={managementOpen} onOpenChange={setManagementOpen}>
-          <DialogContent className="max-w-md"><DialogHeader><DialogTitle>管理者の管理</DialogTitle><DialogDescription>実行する操作を選択してください。</DialogDescription></DialogHeader><div className="grid gap-3"><Button onClick={() => { setManagementOpen(false); setDeleteMode(false); setCreateOpen(true); }} className="bg-blue-600 text-white hover:bg-blue-700">管理者を追加</Button><Button variant="outline" onClick={() => { setManagementOpen(false); onDeletePage?.(); }}>管理者を削除</Button></div></DialogContent>
-        </Dialog>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogContent className="max-w-md"><DialogHeader><DialogTitle>管理者を追加</DialogTitle><DialogDescription>メールアドレスを登録すると、本人が初回パスワードを設定するための招待メールを送信します。</DialogDescription></DialogHeader>
