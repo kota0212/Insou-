@@ -117,6 +117,9 @@ export type Store = {
   passcode?: string;
   passwordUpdatedAt?: string;
   lastLoginAt?: string;
+  notificationEmail?: string;
+  registeredTabletCount?: number | null;
+  isActive?: boolean;
 };
 
 export type MenuPdf = {
@@ -1419,6 +1422,22 @@ function AdminStoreManagement({
   onResetPassword: (storeId: string, password: string) => void;
   onDeleteStore: (id: string) => void;
 }) {
+  const [deviceCounts, setDeviceCounts] = useState<Record<string, number>>({});
+  const [alertCounts, setAlertCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    void (async () => {
+      const session = await getCurrentSession();
+      if (!session?.access_token) return;
+      const headers = { Authorization: `Bearer ${session.access_token}` };
+      const [devices, alerts] = (await Promise.all([
+        fetch('/api/admin/devices', { headers }).then((r) => r.ok ? r.json() : { devices: [] }),
+        fetch('/api/admin/security-alerts?unresolved=true', { headers }).then((r) => r.ok ? r.json() : { alerts: [] }),
+      ])) as [{ devices?: Array<{ store_id: string; revoked_at: string | null; expires_at: string }> }, { alerts?: Array<{ store_id: string }> }];
+      const dc: Record<string, number> = {}; (devices.devices ?? []).forEach((d: { store_id: string; revoked_at: string | null; expires_at: string }) => { if (!d.revoked_at && new Date(d.expires_at) > new Date()) dc[d.store_id] = (dc[d.store_id] ?? 0) + 1; });
+      const ac: Record<string, number> = {}; (alerts.alerts ?? []).forEach((a: { store_id: string }) => { ac[a.store_id] = (ac[a.store_id] ?? 0) + 1; });
+      setDeviceCounts(dc); setAlertCounts(ac);
+    })().catch(() => undefined);
+  }, [stores]);
   const [editorMode, setEditorMode] = useState<'add' | 'edit' | null>(null);
   const [editingStoreId, setEditingStoreId] = useState('');
   const [storeName, setStoreName] = useState('');
@@ -1586,6 +1605,10 @@ function AdminStoreManagement({
                               ) : (
                                 <span className="text-sm text-slate-400">配信なし</span>
                               )}
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-sm">{store.registeredTabletCount ?? '未設定'} / {deviceCounts[store.id] ?? 0}台</p>
+                              {alertCounts[store.id] ? <p className="text-xs font-bold text-amber-700">警告 {alertCounts[store.id]}件</p> : <p className="text-xs text-emerald-600">正常</p>}
                             </TableCell>
                             <TableCell>
                               <div className="space-y-1">

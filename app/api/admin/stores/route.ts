@@ -154,6 +154,21 @@ export async function PATCH(request: Request) {
   const ip = getClientIp(request);
   try {
     const body = (await request.json()) as ResetStorePasswordBody;
+    if (isValidUuid((body as { storeId?: unknown }).storeId) &&
+      ('name' in body || 'area' in body || 'notification_email' in body || 'registered_tablet_count' in body || 'is_active' in body)) {
+      const admin = await requireAdmin(request);
+      const input = body as { storeId: string; name?: unknown; area?: unknown; notification_email?: unknown; registered_tablet_count?: unknown; is_active?: unknown };
+      const update: Record<string, unknown> = {};
+      if (typeof input.name === 'string' && input.name.trim()) update.name = input.name.trim().slice(0, 100);
+      if (typeof input.area === 'string' && input.area.trim()) update.area = input.area.trim().slice(0, 100);
+      if (typeof input.notification_email === 'string') update.notification_email = input.notification_email.trim().slice(0, 320) || null;
+      if (input.registered_tablet_count === null || Number.isInteger(input.registered_tablet_count)) update.registered_tablet_count = input.registered_tablet_count;
+      if (typeof input.is_active === 'boolean') update.is_active = input.is_active;
+      if (!Object.keys(update).length) return Response.json({ error: '更新項目がありません。' }, { status: 400 });
+      const { data, error } = await admin.client.from('stores').update(update).eq('id', input.storeId).select('id,code,name,area,notification_email,registered_tablet_count,is_active').single();
+      if (error) throw error;
+      return Response.json({ store: data });
+    }
     if (!isValidUuid(body.storeId) || !validPassword(body.password)) {
       return Response.json(
         { error: '対象店舗ID（UUID形式）と8文字以上の新しいパスワードを入力してください。' },

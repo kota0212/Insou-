@@ -1,0 +1,3 @@
+import { adminApiErrorResponse, isValidUuid, requireAdmin } from '@/lib/supabase/admin';
+export const runtime='nodejs'; export const dynamic='force-dynamic';
+export async function POST(request: Request){try{const body=await request.json() as {sessionId?:unknown;reason?:unknown}; if(!isValidUuid(body.sessionId)) return Response.json({error:'sessionIdが不正です'},{status:400}); const {client}=await requireAdmin(request); const {data,error}=await client.rpc('revoke_store_device_session',{p_session_id:body.sessionId,p_reason:typeof body.reason==='string'?body.reason.slice(0,100):'admin_revoke'}); if(error) throw error; return Response.json({success:true,result:data});}catch(e){return adminApiErrorResponse(e);}}

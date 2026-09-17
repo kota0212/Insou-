@@ -342,7 +342,7 @@ export async function fetchSupabaseInitData(): Promise<SupabaseInitData> {
   const [storesResult, menusResult] = await Promise.all([
     client
       .from('stores')
-      .select('id, code, name, area, password_updated_at, last_login_at')
+      .select('id, code, name, area, password_updated_at, last_login_at, notification_email, registered_tablet_count, is_active')
       .order('code'),
     client
       .from('menus')
@@ -362,6 +362,9 @@ export async function fetchSupabaseInitData(): Promise<SupabaseInitData> {
     area: row.area,
     passwordUpdatedAt: row.password_updated_at ?? undefined,
     lastLoginAt: row.last_login_at ?? undefined,
+    notificationEmail: row.notification_email ?? undefined,
+    registeredTabletCount: row.registered_tablet_count ?? null,
+    isActive: row.is_active ?? true,
   }));
   const menus = ((menusResult.data ?? []) as MenuRow[]).map((row) => ({
     id: row.id,
