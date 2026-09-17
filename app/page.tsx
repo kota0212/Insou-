@@ -1336,6 +1336,7 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
           <div className="border-b border-slate-100 bg-amber-50 px-6 py-4 text-sm text-amber-950">
             パスワードは安全上一覧表示できません。必要な場合は再設定してください。
           </div>
+          {deleteMode && <div className="border-b border-slate-100 bg-slate-50 px-6 py-3 text-sm text-slate-600">現在ログイン中の管理者と最後の1名は削除できません。別の管理者を選択してください。</div>}
           {isPrototype ? (
             <p className="p-8 text-sm text-slate-500">試作モードではアカウント管理を利用できません。</p>
           ) : loading ? (
@@ -1598,6 +1599,7 @@ function AdminStoreManagement({
                             </TableCell>
                             <TableCell className="pr-6 text-right">
                               <div className="flex flex-wrap justify-end gap-2">
+                                <Button variant="outline" size="sm" disabled={isSubmitting} className="rounded-lg" onClick={() => setDetailStore(store)}>店舗情報を変更</Button>
                                 <Button variant="outline" size="sm" disabled={isSubmitting || loggingOutStoreId === store.id} className="rounded-lg" onClick={async () => {
                                   const activeCount = deviceCounts[store.id] ?? 0;
                                   if (!window.confirm(`${store.name}の全端末をログアウトしますか？\n\n現在認証中の${activeCount}台がログアウトされます。\n次回利用時にはOTPによる再認証が必要です。`)) return;
