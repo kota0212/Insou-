@@ -683,19 +683,9 @@ export default function HomePage() {
         onAdminLogin={async (email, password) => {
           if (!isSupabaseConfigured())
             throw new Error('Supabaseの接続設定が必要です');
-          if (prototypeMode && !prototypeAdminPassword) {
-            // 試作モードでは管理者の入力値やAuthアカウントの有無に依存せず、
-            // 管理画面の導線・表示を確認できる。更新操作は実行しない。
-            setIsPrototypeAdminSession(true);
-            setStores(initialStores);
-            setMenus([]);
-            setApiStatus('ready');
-            setScreen('admin-list');
-            return;
-          }
           await signInAdmin(
-            prototypeMode ? prototypeAdminEmail : email,
-            prototypeMode ? prototypeAdminPassword : password,
+            email,
+            password,
           );
           setIsPrototypeAdminSession(false);
           const data = await fetchSupabaseInitData();
@@ -934,12 +924,8 @@ function UnifiedLogin({
     prototypeMode ? prototypeStorePin : '',
   );
   const [storeLoginError, setStoreLoginError] = useState('');
-  const [adminEmail, setAdminEmail] = useState(
-    prototypeMode ? prototypeAdminEmail : '',
-  );
-  const [adminPass, setAdminPass] = useState(
-    prototypeMode ? prototypeAdminPassword : '',
-  );
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPass, setAdminPass] = useState('');
   const [adminLoginError, setAdminLoginError] = useState('');
 
   // 入力された店舗コードから該当店舗を検索
@@ -989,14 +975,6 @@ function UnifiedLogin({
   return (
     <main className="login-canvas admin-login-canvas">
       <section className="login-card max-w-lg w-full">
-        {prototypeMode && (
-          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-            <strong>試作モード</strong>
-            <span className="ml-2">
-              入力内容に関係なく、ログインボタンだけで検証用アカウントへ開始できます。
-            </span>
-          </div>
-        )}
         {/* Supabase接続状態 */}
         {apiStatus === 'unconfigured' && (
           <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/80 p-2.5 text-[11px] text-blue-900">
@@ -1143,8 +1121,8 @@ function UnifiedLogin({
                 try {
                   setAdminLoginError('');
                   await onAdminLogin(
-                    prototypeMode ? prototypeAdminEmail : adminEmail,
-                    prototypeMode ? prototypeAdminPassword : adminPass,
+                    adminEmail,
+                    adminPass,
                   );
                 } catch (error) {
                   setAdminLoginError(
@@ -1166,7 +1144,7 @@ function UnifiedLogin({
                   onChange={(e) => setAdminEmail(e.target.value)}
                   placeholder="admin@example.com"
                   className="h-11 rounded-xl"
-                  required={!prototypeMode}
+                  required
                 />
               </div>
 
@@ -1180,7 +1158,7 @@ function UnifiedLogin({
                   onChange={(e) => setAdminPass(e.target.value)}
                   placeholder="••••••••"
                   className="h-11 rounded-xl"
-                  required={!prototypeMode}
+                  required
                 />
               </div>
 
@@ -1192,7 +1170,7 @@ function UnifiedLogin({
 
               <Button
                 type="submit"
-                disabled={!prototypeMode && apiStatus !== 'ready'}
+                disabled={apiStatus !== 'ready'}
                 className="h-12 w-full rounded-xl bg-blue-600 text-base font-bold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700"
               >
                 管理者としてログイン
