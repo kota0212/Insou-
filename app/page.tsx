@@ -1952,7 +1952,7 @@ function AdminPdfList({
               <AlertDialogDescription>
                 「{deleteTarget?.title}
                 」は、公開中のすべての店舗画面から削除され、Google
-                Drive上のファイルもゴミ箱へ移動されます。
+                保存されているPDFファイルも削除されます。この操作は元に戻せません。
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

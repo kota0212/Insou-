@@ -587,9 +587,11 @@ export async function deleteSupabaseMenu(menuId: string): Promise<void> {
     .single();
   throwIfError(current.error);
   if (!current.data) throw new Error('削除対象のメニューが見つかりません');
+  const removed = await client.storage.from(PDF_BUCKET).remove([current.data.storage_path]);
+  throwIfError(removed.error);
+  // menu_store_assignments は menus の外部キー cascade により同時削除される。
   const deleted = await client.from('menus').delete().eq('id', menuId);
   throwIfError(deleted.error);
-  await client.storage.from(PDF_BUCKET).remove([current.data.storage_path]);
   await removeCachedPdf(menuId);
 }
 
