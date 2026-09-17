@@ -13,31 +13,11 @@ export class AdminApiError extends Error {
   }
 }
 
-// In-memory rate limiting (sliding window per identifier)
-interface RateLimitRecord {
-  count: number;
-  resetAt: number;
-}
-const rateLimitMap = new Map<string, RateLimitRecord>();
-
-export function checkAdminRateLimit(
-  key: string,
-  limit = 30,
-  windowMs = 60_000,
-): void {
-  const now = Date.now();
-  const record = rateLimitMap.get(key);
-  if (!record || record.resetAt <= now) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
-    return;
-  }
-  if (record.count >= limit) {
-    throw new AdminApiError(
-      'リクエスト制限を超過しました。しばらく経ってから再試行してください。',
-      429,
-    );
-  }
-  record.count += 1;
+async function checkAdminRateLimit(client: SupabaseClient, key: string, limit = 30, windowSeconds = 60): Promise<void> {
+  const { data, error } = await client.rpc('check_and_increment_rate_limit', { p_rate_key: `admin:${key}`, p_limit: limit, p_window_seconds: windowSeconds });
+  if (error) throw new AdminApiError('管理APIのレート制限を確認できません。', 503);
+  const row = Array.isArray(data) ? data[0] : data;
+  if (row && row.allowed === false) throw new AdminApiError('リクエスト制限を超過しました。しばらくしてから再試行してください。', 429);
 }
 
 const UUID_REGEX =
@@ -113,9 +93,8 @@ export async function requireAdmin(request: Request): Promise<AdminContext> {
 
   const ip = getClientIp(request);
   // IP-level rate limiting before expensive auth queries
-  checkAdminRateLimit(`ip:${ip}`, 60, 60_000);
-
   const client = getSupabaseAdminClient();
+  await checkAdminRateLimit(client, `ip:${ip}`, 60, 60);
   const { data, error } = await client.auth.getUser(token);
   if (error || !data.user) {
     throw new AdminApiError('ログイン情報を確認できませんでした。', 401);
@@ -131,7 +110,7 @@ export async function requireAdmin(request: Request): Promise<AdminContext> {
   }
 
   // Admin user rate limit
-  checkAdminRateLimit(`user:${data.user.id}`, 30, 60_000);
+  await checkAdminRateLimit(client, `user:${data.user.id}`, 30, 60);
 
   return { client, adminUserId: data.user.id };
 }

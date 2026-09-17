@@ -97,6 +97,7 @@ import {
 } from '@/lib/supabase-api';
 import { getCachedPdf, removeCachedPdfsExcept } from '@/lib/pdf-cache';
 import { StoreOtpLogin } from '@/components/store-otp-login';
+import { AdminOperations } from '@/components/admin-operations';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 
 export type Screen =
@@ -105,6 +106,9 @@ export type Screen =
   | 'admin-new'
   | 'admin-stores'
   | 'admin-users'
+  | 'admin-devices'
+  | 'admin-alerts'
+  | 'admin-audit'
   | 'store-list'
   | 'sync'
   | 'viewer';
@@ -809,6 +813,12 @@ export default function HomePage() {
         />
       ) : screen === 'admin-users' ? (
         <AdminUserManagement isPrototype={isPrototypeAdminSession} />
+      ) : screen === 'admin-devices' ? (
+        <AdminOperations stores={stores} mode="devices" />
+      ) : screen === 'admin-alerts' ? (
+        <AdminOperations stores={stores} mode="alerts" />
+      ) : screen === 'admin-audit' ? (
+        <AdminOperations stores={stores} mode="audit" />
       ) : (
         <AdminPdfList
           menus={menus}
@@ -1222,6 +1232,9 @@ function AdminShell({
       icon: Users,
       screen: 'admin-users' as Screen,
     },
+    { label: '端末管理', icon: Building2, screen: 'admin-devices' as Screen },
+    { label: 'セキュリティアラート', icon: AlertTriangle, screen: 'admin-alerts' as Screen },
+    { label: '監査ログ', icon: FileText, screen: 'admin-audit' as Screen },
   ];
 
   return (
