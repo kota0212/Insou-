@@ -61,6 +61,38 @@ export function auditLog(entry: {
 }
 
 /**
+ * 管理画面から行った権限操作を監査ログへ記録する。
+ * 認証メールのトークンやパスワードは、この関数へ渡してはならない。
+ */
+export async function recordAdminAudit(
+  client: SupabaseClient,
+  entry: {
+    action: string;
+    adminUserId: string;
+    targetId?: string;
+    targetType?: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const metadata = { ...(entry.metadata ?? {}) };
+  for (const key of ['password', 'token', 'secret', 'otp', 'code', 'inviteToken', 'resetToken']) {
+    delete metadata[key];
+  }
+
+  const { error } = await client.from('audit_logs').insert({
+    actor_type: 'admin',
+    actor_id: entry.adminUserId,
+    action: entry.action,
+    target_type: entry.targetType ?? null,
+    target_id: entry.targetId ?? null,
+    metadata,
+  });
+  if (error) {
+    console.error('[ADMIN_AUDIT_INSERT_ERROR]', error.message);
+  }
+}
+
+/**
  * Supabase Secret Key は管理用 Route Handler でのみ利用する。クライアント側の
  * NEXT_PUBLIC_* 環境変数へは絶対に設定しないこと。漏洩済みとして扱う
  * legacy service_role key へのfallbackは許可しない。
@@ -119,7 +151,10 @@ export function adminApiErrorResponse(error: unknown): Response {
   if (error instanceof AdminApiError) {
     return Response.json({ error: error.message }, { status: error.status });
   }
-  console.error('Admin API error:', error);
+  console.error('Admin API error', {
+    name: error instanceof Error ? error.name : 'unknown',
+    status: error instanceof AdminApiError ? error.status : undefined,
+  });
   return Response.json(
     { error: '管理処理中に問題が発生しました。' },
     { status: 500 },

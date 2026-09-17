@@ -40,6 +40,7 @@ export interface ManagedAdminUser {
   email: string;
   createdAt: string;
   lastSignInAt: string | null;
+  invitedAt?: string | null;
 }
 
 export interface StoreAuthSession {
@@ -287,9 +288,8 @@ export async function fetchManagedAdminUsers(): Promise<ManagedAdminUser[]> {
   return result.users;
 }
 
-export async function createManagedAdminUser(params: {
+export async function inviteManagedAdminUser(params: {
   email: string;
-  password: string;
 }): Promise<ManagedAdminUser> {
   const result = await adminRequest<{ user: ManagedAdminUser }>('/api/admin/users', {
     method: 'POST',
@@ -298,9 +298,8 @@ export async function createManagedAdminUser(params: {
   return result.user;
 }
 
-export async function resetManagedAdminPassword(params: {
+export async function sendManagedAdminPasswordReset(params: {
   userId: string;
-  password: string;
 }): Promise<void> {
   await adminRequest('/api/admin/users', {
     method: 'PATCH',

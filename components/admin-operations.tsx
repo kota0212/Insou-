@@ -41,7 +41,9 @@ const actionLabels: Record<string, string> = {
   store_sessions_revoked: "店舗の全端末をログアウト",
   admin_deleted: "管理者アカウントを削除",
   security_alert_resolved: "セキュリティアラートを解決",
-  CREATE_ADMIN_USER: "管理者を追加",
+  admin_invited: "管理者を招待",
+  admin_password_reset_requested: "パスワード再設定メールを送信",
+  CREATE_ADMIN_USER: "管理者を追加（旧方式）",
   LIST_ADMIN_USERS: "管理者一覧を表示",
 };
 const actorLabels: Record<string, string> = { admin: "管理者", store: "店舗", anonymous: "未認証" };

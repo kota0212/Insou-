@@ -87,8 +87,8 @@ import {
   updateSupabaseMenu,
   updateSupabaseStore,
   fetchManagedAdminUsers,
-  createManagedAdminUser,
-  resetManagedAdminPassword,
+  inviteManagedAdminUser,
+  sendManagedAdminPasswordReset,
   fetchStoreAuthMenuPdf,
   StoreAuthMenu,
   StoreAuthSession,
@@ -1252,9 +1252,7 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [resetTarget, setResetTarget] = useState<import('@/lib/supabase-api').ManagedAdminUser | null>(null);
-  const [resetPassword, setResetPassword] = useState('');
   const [managementOpen, setManagementOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState(deleteOnly);
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
@@ -1286,33 +1284,30 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
 
   const handleCreate = async (event: React.SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (submitting || password.length < 8) return;
+    if (submitting) return;
     setSubmitting(true);
     try {
-      const user = await createManagedAdminUser({ email, password });
+      const user = await inviteManagedAdminUser({ email });
       setUsers((current) => [...current, user]);
       setCreateOpen(false);
       setEmail('');
-      setPassword('');
-      alert('管理者アカウントを追加しました。パスワードは安全に共有してください。');
+      alert('招待メールを送信しました。招待された本人がメールから初回パスワードを設定します。');
     } catch (err) {
-      alert(err instanceof Error ? err.message : '管理者アカウントを追加できませんでした。');
+      alert(err instanceof Error ? err.message : '招待メールを送信できませんでした。');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleReset = async (event: React.SyntheticEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!resetTarget || submitting || resetPassword.length < 8) return;
+  const handleReset = async () => {
+    if (!resetTarget || submitting) return;
     setSubmitting(true);
     try {
-      await resetManagedAdminPassword({ userId: resetTarget.id, password: resetPassword });
+      await sendManagedAdminPasswordReset({ userId: resetTarget.id });
       setResetTarget(null);
-      setResetPassword('');
-      alert('管理者パスワードを再設定しました。');
+      alert('パスワード再設定メールを送信しました。本人がメールから新しいパスワードを設定します。');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'パスワードを再設定できませんでした。');
+      alert(err instanceof Error ? err.message : 'パスワード再設定メールを送信できませんでした。');
     } finally {
       setSubmitting(false);
     }
@@ -1348,7 +1343,7 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
             <Table>
               <TableHeader><TableRow className="bg-slate-50/80"><TableHead className="pl-6">メールアドレス</TableHead><TableHead>登録日</TableHead><TableHead>最終ログイン</TableHead><TableHead className="pr-6 text-right">操作</TableHead></TableRow></TableHeader>
               <TableBody>{users.map((user) => (
-                <TableRow key={user.id}><TableCell className="pl-6 font-medium">{user.email}</TableCell><TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell><TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell><TableCell className="pr-6 text-right"><div className="flex justify-end gap-2">{!deleteMode && <Button variant="outline" size="sm" onClick={() => { setResetTarget(user); setResetPassword(''); }}>パスワードを再設定</Button>}{deleteMode && (user.id === currentAdminId ? <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-500">現在ログイン中</span> : <Button variant="outline" size="sm" className="text-red-600" onClick={async () => { if (!window.confirm(`この管理者アカウントを削除しますか？\n${user.email}\n削除後、このアカウントでは管理画面へログインできなくなります。`)) return; const session=await getCurrentSession(); if(!session?.access_token)return; const response=await fetch(`/api/admin/users?id=${user.id}`,{method:'DELETE',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'}}); if(response.ok) await reload(); else { const b=await response.json() as {error?:string}; alert(b.error||'削除に失敗しました'); } }}>この管理者を削除</Button>)}</div></TableCell></TableRow>
+                <TableRow key={user.id}><TableCell className="pl-6 font-medium">{user.email}{user.invitedAt && !user.lastSignInAt && <span className="ml-2 rounded bg-amber-50 px-2 py-1 text-xs font-normal text-amber-700">招待中</span>}</TableCell><TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell><TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell><TableCell className="pr-6 text-right"><div className="flex justify-end gap-2">{!deleteMode && <Button variant="outline" size="sm" onClick={() => setResetTarget(user)}>パスワード再設定メールを送信</Button>}{deleteMode && (user.id === currentAdminId ? <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-500">現在ログイン中・削除不可</span> : <Button variant="outline" size="sm" className="text-red-600" onClick={async () => { if (!window.confirm(`この管理者アカウントを削除しますか？\n${user.email}\n削除後、このアカウントでは管理画面へログインできなくなります。`)) return; const session=await getCurrentSession(); if(!session?.access_token)return; const response=await fetch(`/api/admin/users?id=${user.id}`,{method:'DELETE',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'}}); if(response.ok) await reload(); else { const b=await response.json() as {error?:string}; alert(b.error||'削除に失敗しました'); } }}>この管理者を削除</Button>)}</div></TableCell></TableRow>
               ))}</TableBody>
             </Table>
           )}
@@ -1362,13 +1357,13 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
         </Dialog>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="max-w-md"><DialogHeader><DialogTitle>管理者を追加</DialogTitle><DialogDescription>メールアドレスと初期パスワードを入力してください。</DialogDescription></DialogHeader>
-            <form className="space-y-4" onSubmit={handleCreate}><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@example.com" required disabled={submitting} /><Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8文字以上の初期パスワード" minLength={8} required disabled={submitting} /><DialogFooter><Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={submitting}>キャンセル</Button><Button type="submit" disabled={submitting || password.length < 8} className="bg-blue-600 text-white hover:bg-blue-700">追加する</Button></DialogFooter></form>
+          <DialogContent className="max-w-md"><DialogHeader><DialogTitle>管理者を追加</DialogTitle><DialogDescription>メールアドレスを登録すると、本人が初回パスワードを設定するための招待メールを送信します。</DialogDescription></DialogHeader>
+            <form className="space-y-4" onSubmit={handleCreate}><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@example.com" required disabled={submitting} /><DialogFooter><Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={submitting}>キャンセル</Button><Button type="submit" disabled={submitting} className="bg-blue-600 text-white hover:bg-blue-700">招待メールを送信</Button></DialogFooter></form>
           </DialogContent>
         </Dialog>
         <Dialog open={Boolean(resetTarget)} onOpenChange={(open) => !open && setResetTarget(null)}>
-          <DialogContent className="max-w-md"><DialogHeader><DialogTitle>管理者パスワードを再設定</DialogTitle><DialogDescription>{resetTarget?.email} の新しいパスワードを設定します。</DialogDescription></DialogHeader>
-            <form className="space-y-4" onSubmit={handleReset}><Input type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="8文字以上の新しいパスワード" minLength={8} required disabled={submitting} /><DialogFooter><Button type="button" variant="outline" onClick={() => setResetTarget(null)} disabled={submitting}>キャンセル</Button><Button type="submit" disabled={submitting || resetPassword.length < 8} className="bg-blue-600 text-white hover:bg-blue-700">再設定する</Button></DialogFooter></form>
+          <DialogContent className="max-w-md"><DialogHeader><DialogTitle>パスワード再設定メールを送信</DialogTitle><DialogDescription>{resetTarget?.email} 宛にパスワード再設定メールを送信します。新しいパスワードは本人がメールのリンクから設定します。</DialogDescription></DialogHeader>
+            <DialogFooter><Button type="button" variant="outline" onClick={() => setResetTarget(null)} disabled={submitting}>キャンセル</Button><Button type="button" onClick={() => void handleReset()} disabled={submitting} className="bg-blue-600 text-white hover:bg-blue-700">再設定メールを送信</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
