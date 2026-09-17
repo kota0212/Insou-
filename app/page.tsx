@@ -764,6 +764,7 @@ export default function HomePage() {
           isSubmitting={isSubmitting}
           onAddStore={handleAddStore}
           onUpdateStore={handleUpdateStore}
+          onStoreSaved={(store) => setStores((current) => current.map((item) => item.id === store.id ? store : item))}
           onDeleteStore={handleDeleteStore}
         />
       ) : screen === 'admin-users' ? (
@@ -1351,6 +1352,7 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
               ))}</TableBody>
             </Table>
           )}
+          {!loading && !error && deleteMode && users.length <= 1 && <p className="border-t border-slate-100 px-6 py-4 text-sm text-slate-500">削除できる管理者がいません。先に「管理者の管理」から別の管理者を追加してください。最後の1名と現在ログイン中の管理者は安全のため削除できません。</p>}
         </section>
 
         {deleteMode && !deleteOnly && <Button variant="outline" className="mt-4" onClick={() => setDeleteMode(false)}>管理者一覧へ戻る</Button>}
@@ -1378,9 +1380,9 @@ function AdminUserManagement({ isPrototype, deleteOnly = false, onDeletePage, on
 // 2. 店舗管理画面 (AdminStoreManagement)
 // ==========================================
 function StoreDetailPanel({ store, onBack, onSaved }: { store: Store; onBack: () => void; onSaved: (store: Store) => void }) {
-  const [name, setName] = useState(store.name); const [area, setArea] = useState(store.area); const [email, setEmail] = useState(store.notificationEmail ?? ''); const [count, setCount] = useState(store.registeredTabletCount?.toString() ?? ''); const [active, setActive] = useState(store.isActive !== false); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
- const save = async () => { setSaving(true); setError(''); try { const session = await getCurrentSession(); if (!session?.access_token) throw new Error('認証が必要です'); const res = await fetch('/api/admin/stores',{method:'PATCH',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({storeId:store.id,name,area,notification_email:email,registered_tablet_count:count===''?null:Number(count),is_active:active})}); const body=await res.json() as {error?: string}; if(!res.ok) throw new Error(body.error); onSaved({...store,name,area,notificationEmail:email||undefined,registeredTabletCount:count===''?null:Number(count),isActive:active}); } catch(e){setError(e instanceof Error?e.message:'保存に失敗しました')} finally{setSaving(false)} };
-  return <main className="min-h-svh p-6 lg:p-10"><div className="mx-auto max-w-4xl"><Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 size-4"/>店舗一覧へ戻る</Button><h1 className="mt-4 text-3xl font-bold">{store.name} 詳細</h1><section className="mt-6 rounded-2xl border bg-white p-6"><h2 className="text-xl font-bold">基本情報</h2><div className="mt-4 grid gap-4 sm:grid-cols-2"><label>店舗名<Input value={name} onChange={e=>setName(e.target.value)}/></label><label>店舗コード<Input value={store.code} disabled/></label><label>エリア<Input value={area} onChange={e=>setArea(e.target.value)}/></label><label>通知メール<Input type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>登録タブレット台数<Input type="number" min="0" value={count} onChange={e=>setCount(e.target.value)}/></label><label className="flex items-center gap-2 pt-6"><Checkbox checked={active} onCheckedChange={v=>setActive(Boolean(v))}/>店舗を有効にする</label></div>{email&&<p className="mt-3 text-xs text-slate-500">このメールアドレスへログイン用の認証コードが送信されます。</p>}{error&&<p className="mt-3 text-sm text-red-600">{error}</p>}<Button className="mt-5" onClick={()=>void save()} disabled={saving}>保存</Button></section><AdminOperations stores={[{id:store.id,name:store.name}]} mode="devices" initialStoreId={store.id}/></div></main>;
+  const [name, setName] = useState(store.name); const [area, setArea] = useState(store.area); const [email, setEmail] = useState(store.notificationEmail ?? ''); const [count, setCount] = useState(store.registeredTabletCount?.toString() ?? ''); const [active, setActive] = useState(store.isActive !== false); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [saved, setSaved] = useState(false);
+  const save = async () => { setSaving(true); setError(''); setSaved(false); try { const parsedCount = count === '' ? null : Number(count); if (parsedCount !== null && (!Number.isInteger(parsedCount) || parsedCount < 0)) throw new Error('登録タブレット台数は0以上の整数で入力してください。'); const session = await getCurrentSession(); if (!session?.access_token) throw new Error('認証が必要です'); const res = await fetch('/api/admin/stores',{method:'PATCH',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({storeId:store.id,name,area,notification_email:email,registered_tablet_count:parsedCount,is_active:active})}); const body=await res.json() as {error?: string}; if(!res.ok) throw new Error(body.error); onSaved({...store,name,area,notificationEmail:email||undefined,registeredTabletCount:parsedCount,isActive:active}); setSaved(true); } catch(e){setError(e instanceof Error?e.message:'保存に失敗しました')} finally{setSaving(false)} };
+  return <main className="min-h-svh p-6 lg:p-10"><div className="mx-auto max-w-4xl"><Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 size-4"/>店舗一覧へ戻る</Button><h1 className="mt-4 text-3xl font-bold">{store.name} 詳細</h1><section className="mt-6 rounded-2xl border bg-white p-6"><h2 className="text-xl font-bold">基本情報</h2><div className="mt-4 grid gap-4 sm:grid-cols-2"><label>店舗名<Input value={name} onChange={e=>setName(e.target.value)}/></label><label>店舗コード<Input value={store.code} disabled/></label><label>エリア<Input value={area} onChange={e=>setArea(e.target.value)}/></label><label>通知メール<Input type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>登録タブレット台数<Input type="number" min="0" step="1" value={count} onChange={e=>setCount(e.target.value)}/></label><label className="flex items-center gap-2 pt-6"><Checkbox checked={active} onCheckedChange={v=>setActive(Boolean(v))}/>店舗を有効にする</label></div>{email&&<p className="mt-3 text-xs text-slate-500">このメールアドレスへログイン用の認証コードが送信されます。</p>}{error&&<p className="mt-3 text-sm text-red-600">{error}</p>}{saved&&<p className="mt-3 text-sm font-semibold text-emerald-600">店舗情報を保存しました。</p>}<Button className="mt-5" onClick={()=>void save()} disabled={saving}>{saving ? '保存中...' : '保存'}</Button></section><AdminOperations stores={[{id:store.id,name:store.name}]} mode="devices" initialStoreId={store.id}/></div></main>;
 }
 
 function AdminStoreManagement({
@@ -1389,6 +1391,7 @@ function AdminStoreManagement({
   isSubmitting,
   onAddStore,
   onUpdateStore,
+  onStoreSaved,
   onDeleteStore,
 }: {
   stores: Store[];
@@ -1396,6 +1399,7 @@ function AdminStoreManagement({
   isSubmitting: boolean;
   onAddStore: (store: Store, password: string) => void;
   onUpdateStore: (store: Store) => void;
+  onStoreSaved: (store: Store) => void;
   onDeleteStore: (id: string) => void;
 }) {
   const [deviceCounts, setDeviceCounts] = useState<Record<string, number>>({});
@@ -1427,7 +1431,7 @@ function AdminStoreManagement({
     (a, b) => a.localeCompare(b, 'ja'),
   );
   const selectedStore = stores.find((store) => store.id === editingStoreId);
-  if (detailStore) return <StoreDetailPanel store={detailStore} onBack={() => setDetailStore(null)} onSaved={(s) => { onUpdateStore(s); setDetailStore(s); }} />;
+  if (detailStore) return <StoreDetailPanel store={detailStore} onBack={() => setDetailStore(null)} onSaved={(s) => { onStoreSaved(s); setDetailStore(s); }} />;
 
   const populateEditor = (store: Store) => {
     setEditingStoreId(store.id);
@@ -1447,8 +1451,7 @@ function AdminStoreManagement({
   const openEditEditor = () => {
     const target = stores[0];
     if (!target) return;
-    setEditorMode('edit');
-    populateEditor(target);
+    setDetailStore(target);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
