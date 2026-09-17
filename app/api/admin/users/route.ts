@@ -143,6 +143,23 @@ export async function POST(request: Request) {
   }
 }
 
+export async function DELETE(request: Request) {
+  try {
+    const id = new URL(request.url).searchParams.get('id');
+    if (!isValidUuid(id)) return Response.json({ error: 'idが不正です。' }, { status: 400 });
+    const admin = await requireAdmin(request);
+    if (id === admin.adminUserId) return Response.json({ error: '自分自身は削除できません。' }, { status: 400 });
+    const profiles = await admin.client.from('user_profiles').select('user_id').eq('role','admin');
+    if (profiles.error) throw profiles.error;
+    if ((profiles.data ?? []).length <= 1) return Response.json({ error: '最後の管理者は削除できません。' }, { status: 400 });
+    const deleted = await admin.client.auth.admin.deleteUser(id);
+    if (deleted.error) throw deleted.error;
+    await admin.client.from('user_profiles').delete().eq('user_id', id);
+    auditLog({ action: 'admin_deleted', adminUserId: admin.adminUserId, targetId: id, targetType: 'admin_user', status: 'SUCCESS' });
+    return Response.json({ success: true });
+  } catch (error) { return adminApiErrorResponse(error); }
+}
+
 export async function PATCH(request: Request) {
   let adminUserId = 'unknown';
   const ip = getClientIp(request);

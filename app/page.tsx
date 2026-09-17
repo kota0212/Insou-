@@ -1212,7 +1212,7 @@ function AdminShell({
     },
     { label: '端末管理', icon: Building2, screen: 'admin-devices' as Screen },
     { label: 'セキュリティアラート', icon: AlertTriangle, screen: 'admin-alerts' as Screen },
-    { label: '監査ログ', icon: FileText, screen: 'admin-audit' as Screen },
+    { label: '操作ログ', icon: FileText, screen: 'admin-audit' as Screen },
   ];
 
   return (
@@ -1372,7 +1372,7 @@ function AdminUserManagement({ isPrototype }: { isPrototype: boolean }) {
             <Table>
               <TableHeader><TableRow className="bg-slate-50/80"><TableHead className="pl-6">メールアドレス</TableHead><TableHead>登録日</TableHead><TableHead>最終ログイン</TableHead><TableHead className="pr-6 text-right">操作</TableHead></TableRow></TableHeader>
               <TableBody>{users.map((user) => (
-                <TableRow key={user.id}><TableCell className="pl-6 font-medium">{user.email}</TableCell><TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell><TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell><TableCell className="pr-6 text-right"><Button variant="outline" size="sm" onClick={() => { setResetTarget(user); setResetPassword(''); }}>パスワードを再設定</Button></TableCell></TableRow>
+                <TableRow key={user.id}><TableCell className="pl-6 font-medium">{user.email}</TableCell><TableCell className="text-sm text-slate-500">{formatDateTime(user.createdAt)}</TableCell><TableCell className="text-sm text-slate-500">{user.lastSignInAt ? formatDateTime(user.lastSignInAt) : '記録なし'}</TableCell><TableCell className="pr-6 text-right"><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => { setResetTarget(user); setResetPassword(''); }}>パスワードを再設定</Button><Button variant="outline" size="sm" className="text-red-600" onClick={async () => { if (!window.confirm(`この管理者アカウントを削除しますか？\n${user.email}`)) return; const session=await getCurrentSession(); if(!session?.access_token)return; const response=await fetch(`/api/admin/users?id=${user.id}`,{method:'DELETE',headers:{Authorization:`Bearer ${session.access_token}`}}); if(response.ok) await reload(); else { const b=await response.json() as {error?:string}; alert(b.error||'削除に失敗しました'); } }}>削除</Button></div></TableCell></TableRow>
               ))}</TableBody>
             </Table>
           )}
@@ -1573,9 +1573,10 @@ function AdminStoreManagement({
                       <TableRow className="bg-slate-50/80">
                         <TableHead className="pl-6 text-xs text-slate-500">コード</TableHead>
                         <TableHead className="text-xs text-slate-500">店舗名</TableHead>
+                        <TableHead className="text-xs text-slate-500">OTP送信先メールアドレス</TableHead>
+                        <TableHead className="text-xs text-slate-500">登録端末数 / 有効端末数</TableHead>
                         <TableHead className="min-w-56 text-xs text-slate-500">配信メニュー名</TableHead>
                         <TableHead className="text-xs text-slate-500">ログイン状況</TableHead>
-                        <TableHead className="text-xs text-slate-500">パスワード</TableHead>
                         <TableHead className="pr-6 text-right text-xs text-slate-500">操作</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1592,6 +1593,7 @@ function AdminStoreManagement({
                               </span>
                             </TableCell>
                             <TableCell className="font-semibold text-blue-700"><button onClick={() => setDetailStore(store)} className="hover:underline">{store.name}</button></TableCell>
+                            <TableCell className="text-xs">{store.notificationEmail || '未設定'}</TableCell>
                             <TableCell>
                               {assignedMenus.length ? (
                                 <div className="space-y-1 text-sm text-slate-700">
@@ -1618,25 +1620,6 @@ function AdminStoreManagement({
                                   最終: {store.lastLoginAt ? formatDateTime(store.lastLoginAt) : '記録なし'}
                                 </p>
                               </div>
-                            </TableCell>
-                            <TableCell>
-                              <p className="text-sm font-bold text-slate-800">設定済み</p>
-                              <p className="whitespace-nowrap text-[11px] text-slate-500">
-                                更新: {store.passwordUpdatedAt ? formatDateTime(store.passwordUpdatedAt) : '記録なし'}
-                              </p>
-                              <Button
-                                type="button"
-                                variant="link"
-                                size="sm"
-                                className="mt-1 h-auto px-0 text-xs text-blue-700"
-                                disabled={isSubmitting}
-                                onClick={() => {
-                                  setPasswordTarget(store);
-                                  setResetPassword('');
-                                }}
-                              >
-                                パスワードを再設定
-                              </Button>
                             </TableCell>
                             <TableCell className="pr-6 text-right">
                               <Button
