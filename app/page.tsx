@@ -2431,7 +2431,13 @@ function PdfViewer({
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(100);
   const [total, setTotal] = useState(1);
-  const [turnAnim, setTurnAnim] = useState<'next' | 'prev' | null>(null);
+  const [turn, setTurn] = useState<{
+    from: number;
+    to: number;
+    direction: 'next' | 'prev';
+  } | null>(null);
+  const [readyPages, setReadyPages] = useState<Set<number>>(() => new Set());
+  const turnTimerRef = useRef<number | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
   // ピンチ操作中はCSS transformで即時に追従し、操作が落ち着いた時点で
   // canvasを描き直す。これにより高倍率でもぼやけた状態を残さない。
@@ -2476,31 +2482,32 @@ function PdfViewer({
     return () => window.clearTimeout(timer);
   }, [zoom]);
 
-  // ページ送り処理（本めくりエフェクト付き）
+  useEffect(() => () => {
+    if (turnTimerRef.current !== null) window.clearTimeout(turnTimerRef.current);
+  }, []);
+
+  const onPageReady = useCallback((pageNumber: number) => {
+    setReadyPages((previous) => new Set(previous).add(pageNumber));
+  }, []);
+  const onRenderStart = useCallback(() => setReadyPages(new Set()), []);
+
+  // 背面ページの描画が済んでから、前面の紙だけをめくる。
   const movePage = useCallback(
     (direction: -1 | 1) => {
-      if (turnAnim) return;
+      if (turn) return;
       const nextPage = page + direction;
-      if (nextPage < 1 || nextPage > total) return;
+      if (nextPage < 1 || nextPage > total || !readyPages.has(nextPage)) return;
 
-      setTurnAnim(direction === 1 ? 'next' : 'prev');
+      setTurn({ from: page, to: nextPage, direction: direction === 1 ? 'next' : 'prev' });
       setPan({ x: 0, y: 0 });
-
-      const switchTimer = setTimeout(() => {
+      turnTimerRef.current = window.setTimeout(() => {
         setPage(nextPage);
-      }, 240);
-
-      const endTimer = setTimeout(() => {
-        setTurnAnim(null);
+        setTurn(null);
         setSwipeOffset(0);
-      }, 530);
-
-      return () => {
-        clearTimeout(switchTimer);
-        clearTimeout(endTimer);
-      };
+        turnTimerRef.current = null;
+      }, 480);
     },
-    [page, total, turnAnim],
+    [page, total, turn, readyPages],
   );
 
   // キーボードショートカット操作
@@ -2523,12 +2530,12 @@ function PdfViewer({
 
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        if (page > 1 && !turnAnim) {
+        if (page > 1 && !turn) {
           movePage(-1);
         }
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        if (page < total && !turnAnim) {
+        if (page < total && !turn) {
           movePage(1);
         }
       } else if (event.key === '+' || event.key === '=') {
@@ -2551,7 +2558,7 @@ function PdfViewer({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [movePage, onBack, page, total, turnAnim]);
+  }, [movePage, onBack, page, total, turn]);
 
   // ポインター押下
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -2679,7 +2686,7 @@ function PdfViewer({
     }
 
     dragStartRef.current = null;
-    if (!turnAnim) setSwipeOffset(0);
+    if (!turn) setSwipeOffset(0);
   };
 
   const onPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -2717,27 +2724,18 @@ function PdfViewer({
       >
         <div className="book-turn-viewport">
           <div
-            className={`book-turn-stage ${
-              turnAnim === 'next'
-                ? 'book-anim-next'
-                : turnAnim === 'prev'
-                  ? 'book-anim-prev'
-                  : ''
-            }`}
+            className="book-turn-stage"
             style={{
               transform:
-                turnAnim
-                  ? undefined
-                  : zoom > 100
+                zoom > 100
                   ? `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom / 100})`
                   : swipeOffset
                     ? `translate3d(${swipeOffset * 0.24}px, -3px, 0) scale(0.985)`
                     : undefined,
               transition:
-                isPanning || turnAnim ? 'none' : 'transform 0.12s ease-out',
+                isPanning || turn ? 'none' : 'transform 0.12s ease-out',
             }}
           >
-            {turnAnim && <div className="book-turn-overlay" />}
             {isLoadingPdf ? (
               <div className="flex min-h-[400px] flex-col items-center justify-center gap-3 text-amber-200">
                 <Loader2 className="size-10 animate-spin text-[#ba985b]" />
@@ -2751,8 +2749,11 @@ function PdfViewer({
               <PdfCanvas
                 pdfData={menu.pdfData}
                 page={page}
+                turn={turn}
                 renderZoom={rasterZoom}
                 onLoaded={setTotal}
+                onPageReady={onPageReady}
+                onRenderStart={onRenderStart}
                 onRetry={onRetry}
               />
             ) : (
@@ -2799,21 +2800,43 @@ function PdfLoadError({
 // ==========================================
 // 実際のPDFレンダラー (PdfCanvas)
 // ==========================================
+type PageTurn = { from: number; to: number; direction: 'next' | 'prev' } | null;
+
+function showPageLayers(container: HTMLDivElement, page: number, turn: PageTurn) {
+  container.querySelectorAll<HTMLElement>('.pdf-page-sheet').forEach((sheet) => {
+    const number = Number(sheet.dataset.page);
+    const isFront = number === (turn?.from ?? page);
+    const isBack = turn !== null && number === turn.to;
+    sheet.style.display = isFront || isBack ? 'block' : 'none';
+    sheet.classList.toggle('pdf-page-front', isFront);
+    sheet.classList.toggle('pdf-page-back', isBack);
+    sheet.classList.toggle('pdf-page-turn-next', isFront && turn?.direction === 'next');
+    sheet.classList.toggle('pdf-page-turn-prev', isFront && turn?.direction === 'prev');
+  });
+}
+
 function PdfCanvas({
   pdfData,
   page,
+  turn,
   renderZoom,
   onLoaded,
+  onPageReady,
+  onRenderStart,
   onRetry,
 }: {
   pdfData: Blob;
   page: number;
+  turn: PageTurn;
   renderZoom: number;
   onLoaded: (pages: number) => void;
+  onPageReady: (pageNumber: number) => void;
+  onRenderStart: () => void;
   onRetry: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(page);
+  const currentTurnRef = useRef(turn);
   const [renderRevision, setRenderRevision] = useState(0);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(
     'loading',
@@ -2821,7 +2844,9 @@ function PdfCanvas({
 
   useEffect(() => {
     currentPageRef.current = page;
-  }, [page]);
+    currentTurnRef.current = turn;
+    if (containerRef.current) showPageLayers(containerRef.current, page, turn);
+  }, [page, turn]);
 
   // 回転・ウィンドウサイズ変更後に、表示サイズに合う内部ピクセル数で再描画する。
   // CSSだけでcanvasを拡大し続けることを防ぐ。
@@ -2897,6 +2922,7 @@ function PdfCanvas({
         onLoaded(pdf.numPages);
         const container = containerRef.current;
         if (!container) return;
+        onRenderStart();
         container.replaceChildren();
 
         const firstPage = Math.min(currentPageRef.current, pdf.numPages);
@@ -2951,19 +2977,27 @@ function PdfCanvas({
           canvas.width = viewport.width;
           canvas.height = viewport.height;
           canvas.className = 'pdf-canvas';
-          canvas.dataset.page = String(pageNumber);
           canvas.dataset.outputScale = String(outputScale);
-          canvas.style.display =
-            pageNumber === currentPageRef.current ? 'block' : 'none';
           canvas.style.width = `${Math.round(baseViewport.width * cssScale)}px`;
           canvas.style.height = `${Math.round(baseViewport.height * cssScale)}px`;
-          container.appendChild(canvas);
+          const sheet = document.createElement('div');
+          sheet.className = 'pdf-page-sheet';
+          sheet.dataset.page = String(pageNumber);
+          sheet.style.width = canvas.style.width;
+          sheet.style.height = canvas.style.height;
+          sheet.style.marginLeft = `${-Math.round(baseViewport.width * cssScale) / 2}px`;
+          sheet.style.marginTop = `${-Math.round(baseViewport.height * cssScale) / 2}px`;
+          sheet.appendChild(canvas);
           const task = pdfPage.render({
             canvasContext: context,
             viewport,
           });
           renderTasks.push(task);
           await task.promise;
+          if (cancelled) return;
+          container.appendChild(sheet);
+          showPageLayers(container, currentPageRef.current, currentTurnRef.current);
+          onPageReady(pageNumber);
           if (pageNumber === firstPage && !cancelled) setStatus('ready');
 
           // iPad Safariのメインスレッドとメモリを一度に占有しない。
@@ -2998,24 +3032,13 @@ function PdfCanvas({
       for (const task of renderTasks) task.cancel();
       void loadingTask?.destroy();
     };
-  }, [onLoaded, pdfData, renderRevision, renderZoom]);
-
-  useEffect(() => {
-    const canvases =
-      containerRef.current?.querySelectorAll<HTMLCanvasElement>(
-        'canvas[data-page]',
-      );
-    canvases?.forEach((canvas) => {
-      canvas.style.display =
-        canvas.dataset.page === String(page) ? 'block' : 'none';
-    });
-  }, [page]);
+  }, [onLoaded, onPageReady, onRenderStart, pdfData, renderRevision, renderZoom]);
 
   return (
     <div className="pdf-canvas-wrap">
       <div
         ref={containerRef}
-        className={status === 'ready' ? 'opacity-100' : 'opacity-0'}
+        className={`pdf-page-stack ${status === 'ready' ? 'opacity-100' : 'opacity-0'}`}
       />
       {status === 'loading' && (
         <p className="pdf-status">PDFを描画しています...</p>
