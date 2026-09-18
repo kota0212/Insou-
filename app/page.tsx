@@ -2825,22 +2825,40 @@ function PdfCanvas({
 
   // 回転・ウィンドウサイズ変更後に、表示サイズに合う内部ピクセル数で再描画する。
   // CSSだけでcanvasを拡大し続けることを防ぐ。
+  // NOTE: containerRef自体（canvasを追加するたびに大きさが変わる）ではなく、
+  // その親要素（CSS固定サイズのビューポート）を監視する。
+  // containerを直接監視するとcanvas追加→ResizeObserver発火→再描画→無限ループになる。
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    // 親要素（.book-turn-viewport など CSS で固定サイズ）を監視する。
+    // 親が存在しない場合は window resize だけで対応する。
+    const target = container?.parentElement ?? container;
+    if (!target) return;
     let timer: number | undefined;
-    const scheduleRerender = () => {
+    let lastW = target.clientWidth;
+    let lastH = target.clientHeight;
+    const THRESHOLD = 8; // px 以下の変化は無視（canvas DOM 操作由来の微変化を除外）
+    const scheduleRerender = (entries?: ResizeObserverEntry[]) => {
+      if (entries) {
+        const entry = entries[0];
+        const w = entry?.contentRect.width ?? target.clientWidth;
+        const h = entry?.contentRect.height ?? target.clientHeight;
+        if (Math.abs(w - lastW) < THRESHOLD && Math.abs(h - lastH) < THRESHOLD) return;
+        lastW = w;
+        lastH = h;
+      }
       window.clearTimeout(timer);
       timer = window.setTimeout(() => setRenderRevision((value) => value + 1), 180);
     };
+    const onWindowResize = () => scheduleRerender();
     const observer = new ResizeObserver(scheduleRerender);
-    observer.observe(container);
-    window.addEventListener('resize', scheduleRerender);
-    window.addEventListener('orientationchange', scheduleRerender);
+    observer.observe(target);
+    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('orientationchange', onWindowResize);
     return () => {
       observer.disconnect();
-      window.removeEventListener('resize', scheduleRerender);
-      window.removeEventListener('orientationchange', scheduleRerender);
+      window.removeEventListener('resize', onWindowResize);
+      window.removeEventListener('orientationchange', onWindowResize);
       window.clearTimeout(timer);
     };
   }, []);
@@ -2955,6 +2973,9 @@ function PdfCanvas({
         }
         if (!cancelled) setStatus('ready');
       } catch (error) {
+        // cancelled=true の場合は task.cancel()/documentTask.destroy() の副作用で
+        // 様々なエラー（"Worker was destroyed", "MessageHandler is destroyed",
+        // RenderingCancelledException など）が投げられる。いずれも無視する。
         if (
           !cancelled &&
           !(
