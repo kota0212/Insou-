@@ -407,17 +407,17 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  backface-visibility: hidden;
-  transform-style: preserve-3d;
   pointer-events: none;
 }
 .pdf-page-front { z-index: 2; }
 .pdf-page-back { z-index: 1; }
 .pdf-page-turn-next {
+  backface-visibility: hidden;
   transform-origin: left center;
   animation: paperTurnNext 0.48s ease-in-out forwards;
 }
 .pdf-page-turn-prev {
+  backface-visibility: hidden;
   transform-origin: right center;
   animation: paperTurnPrev 0.48s ease-in-out forwards;
 }
@@ -512,7 +512,6 @@
   display: grid;
   place-items: center;
   transform-style: preserve-3d;
-  will-change: transform;
 }
 
 .viewer-pannable {

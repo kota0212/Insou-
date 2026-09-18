@@ -2940,13 +2940,16 @@ function PdfCanvas({
           // CSS表示サイズとcanvas内部ピクセルを分離する。従来はPDFの基準
           // サイズだけから内部解像度を決め、回転・リサイズ・ズーム時にCSSが
           // canvasを拡大する余地があった。
-          const availableWidth = Math.max(1, container.clientWidth || window.innerWidth);
+          const availableWidth = Math.max(
+            1,
+            (container.clientWidth || window.innerWidth) * 0.96,
+          );
           const availableHeight = Math.max(
             1,
             Math.min(
-              container.clientHeight || window.innerHeight * 0.78,
-              window.innerHeight * 0.78,
-              880,
+              (container.clientHeight || window.innerHeight) * 0.94,
+              window.innerHeight * 0.94,
+              1200,
             ),
           );
           const cssScale = Math.max(
@@ -2956,41 +2959,40 @@ function PdfCanvas({
               availableHeight / baseViewport.height,
             ),
           );
-          // iPad/MacのRetina (2x) を満たしつつ、3x端末と高倍率ズームで
-          // 全ページを過剰に保持しないよう出力密度を上限2.5x・12MP/ページに制限。
-          const deviceScale = Math.min(window.devicePixelRatio || 1, 2.5);
-          const zoomScale = Math.min(Math.max(renderZoom / 100, 1), 2);
+          // 実画素密度を確保し、縮小表示時も文字・画像を軽くスーパーサンプリングする。
+          // ズーム倍率は2倍で打ち切らず、12MP/ページの上限でメモリを抑える。
+          const deviceScale = Math.min(window.devicePixelRatio || 1, 3);
+          const zoomScale = Math.max(renderZoom / 100, 1);
           const maxPixels = 12_000_000;
           const pixelScaleLimit = Math.sqrt(
             maxPixels / (baseViewport.width * baseViewport.height * cssScale * cssScale),
           );
           const outputScale = Math.max(
             1,
-            Math.min(deviceScale * zoomScale, pixelScaleLimit),
+            Math.min(deviceScale * 1.5 * zoomScale, pixelScaleLimit),
           );
-          const viewport = pdfPage.getViewport({
-            scale: cssScale * outputScale,
-          });
+          const viewport = pdfPage.getViewport({ scale: cssScale });
           const canvas = document.createElement('canvas');
           const context = canvas.getContext('2d');
           if (!context || cancelled) return;
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
+          canvas.width = Math.ceil(viewport.width * outputScale);
+          canvas.height = Math.ceil(viewport.height * outputScale);
           canvas.className = 'pdf-canvas';
           canvas.dataset.outputScale = String(outputScale);
-          canvas.style.width = `${Math.round(baseViewport.width * cssScale)}px`;
-          canvas.style.height = `${Math.round(baseViewport.height * cssScale)}px`;
+          canvas.style.width = `${viewport.width}px`;
+          canvas.style.height = `${viewport.height}px`;
           const sheet = document.createElement('div');
           sheet.className = 'pdf-page-sheet';
           sheet.dataset.page = String(pageNumber);
           sheet.style.width = canvas.style.width;
           sheet.style.height = canvas.style.height;
-          sheet.style.marginLeft = `${-Math.round(baseViewport.width * cssScale) / 2}px`;
-          sheet.style.marginTop = `${-Math.round(baseViewport.height * cssScale) / 2}px`;
+          sheet.style.marginLeft = `${-viewport.width / 2}px`;
+          sheet.style.marginTop = `${-viewport.height / 2}px`;
           sheet.appendChild(canvas);
           const task = pdfPage.render({
             canvasContext: context,
             viewport,
+            transform: [outputScale, 0, 0, outputScale, 0, 0],
           });
           renderTasks.push(task);
           await task.promise;
