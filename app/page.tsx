@@ -2825,14 +2825,11 @@ function PdfCanvas({
 
   // 回転・ウィンドウサイズ変更後に、表示サイズに合う内部ピクセル数で再描画する。
   // CSSだけでcanvasを拡大し続けることを防ぐ。
-  // NOTE: containerRef自体（canvasを追加するたびに大きさが変わる）ではなく、
-  // その親要素（CSS固定サイズのビューポート）を監視する。
+  // NOTE: canvasの寸法に影響されるラッパーではなく、外側のビューポートを監視する。
   // containerを直接監視するとcanvas追加→ResizeObserver発火→再描画→無限ループになる。
   useEffect(() => {
     const container = containerRef.current;
-    // 親要素（.book-turn-viewport など CSS で固定サイズ）を監視する。
-    // 親が存在しない場合は window resize だけで対応する。
-    const target = container?.parentElement ?? container;
+    const target = container?.closest<HTMLElement>('.book-turn-viewport');
     if (!target) return;
     let timer: number | undefined;
     let lastW = target.clientWidth;
@@ -2869,15 +2866,19 @@ function PdfCanvas({
       cancel: () => void;
       promise: Promise<unknown>;
     }> = [];
-    let documentTask: { destroy: () => Promise<void> } | undefined;
+    let loadingTask: ReturnType<typeof import('pdfjs-dist').getDocument> | undefined;
 
     const render = async () => {
       try {
         setStatus('loading');
-        // Next.js/Webpack 用のエントリポイントを使う。ここで PDF.js の
-        // worker も同じビルド成果物として解決され、iPadを含むブラウザ側で
-        // PDF バイナリを安全に描画できる。
-        const pdfjs = await import('pdfjs-dist/webpack.mjs');
+        // webpack.mjs は全ドキュメントで同じ workerPort を共有する。
+        // 再描画時の destroy() 後にその port が再利用されるため、
+        // workerSrc からドキュメントごとに新しい Worker を生成する。
+        const pdfjs = await import('pdfjs-dist');
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.mjs',
+          import.meta.url,
+        ).toString();
 
         const source = await pdfData.arrayBuffer();
         const bytes = new Uint8Array(source);
@@ -2887,11 +2888,10 @@ function PdfCanvas({
         ) {
           throw new Error('無効なPDFデータです');
         }
-        const loadingTask = pdfjs.getDocument({
+        loadingTask = pdfjs.getDocument({
           data: bytes,
         });
         const pdf = await loadingTask.promise;
-        documentTask = pdf;
         if (cancelled) return;
 
         onLoaded(pdf.numPages);
@@ -2996,7 +2996,7 @@ function PdfCanvas({
     return () => {
       cancelled = true;
       for (const task of renderTasks) task.cancel();
-      void documentTask?.destroy();
+      void loadingTask?.destroy();
     };
   }, [onLoaded, pdfData, renderRevision, renderZoom]);
 
