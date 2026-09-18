@@ -2433,6 +2433,9 @@ function PdfViewer({
   const [total, setTotal] = useState(1);
   const [turnAnim, setTurnAnim] = useState<'next' | 'prev' | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
+  // ピンチ操作中はCSS transformで即時に追従し、操作が落ち着いた時点で
+  // canvasを描き直す。これにより高倍率でもぼやけた状態を残さない。
+  const [rasterZoom, setRasterZoom] = useState(100);
 
   // 拡大時のパン（平行移動）状態
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -2466,6 +2469,11 @@ function PdfViewer({
     if (zoom <= 100) {
       setPan({ x: 0, y: 0 });
     }
+  }, [zoom]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setRasterZoom(zoom), 160);
+    return () => window.clearTimeout(timer);
   }, [zoom]);
 
   // ページ送り処理（本めくりエフェクト付き）
@@ -2662,6 +2670,12 @@ function PdfViewer({
       Math.abs(deltaX) > Math.abs(deltaY) * 1.2
     ) {
       movePage(deltaX < 0 ? 1 : -1);
+    } else if (zoom <= 100 && !hasDraggedRef.current) {
+      // 画面端のタップでもページを送れるようにする。中央は誤操作を避ける。
+      const width = event.currentTarget.getBoundingClientRect().width;
+      const x = event.clientX - event.currentTarget.getBoundingClientRect().left;
+      if (x >= width * 0.65) movePage(1);
+      else if (x <= width * 0.35) movePage(-1);
     }
 
     dragStartRef.current = null;
@@ -2712,12 +2726,15 @@ function PdfViewer({
             }`}
             style={{
               transform:
-                zoom > 100
+                turnAnim
+                  ? undefined
+                  : zoom > 100
                   ? `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom / 100})`
                   : swipeOffset
                     ? `translate3d(${swipeOffset * 0.24}px, -3px, 0) scale(0.985)`
                     : undefined,
-              transition: isPanning ? 'none' : 'transform 0.12s ease-out',
+              transition:
+                isPanning || turnAnim ? 'none' : 'transform 0.12s ease-out',
             }}
           >
             {turnAnim && <div className="book-turn-overlay" />}
@@ -2734,6 +2751,7 @@ function PdfViewer({
               <PdfCanvas
                 pdfData={menu.pdfData}
                 page={page}
+                renderZoom={rasterZoom}
                 onLoaded={setTotal}
                 onRetry={onRetry}
               />
@@ -2784,16 +2802,19 @@ function PdfLoadError({
 function PdfCanvas({
   pdfData,
   page,
+  renderZoom,
   onLoaded,
   onRetry,
 }: {
   pdfData: Blob;
   page: number;
+  renderZoom: number;
   onLoaded: (pages: number) => void;
   onRetry: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(page);
+  const [renderRevision, setRenderRevision] = useState(0);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(
     'loading',
   );
@@ -2801,6 +2822,28 @@ function PdfCanvas({
   useEffect(() => {
     currentPageRef.current = page;
   }, [page]);
+
+  // 回転・ウィンドウサイズ変更後に、表示サイズに合う内部ピクセル数で再描画する。
+  // CSSだけでcanvasを拡大し続けることを防ぐ。
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let timer: number | undefined;
+    const scheduleRerender = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setRenderRevision((value) => value + 1), 180);
+    };
+    const observer = new ResizeObserver(scheduleRerender);
+    observer.observe(container);
+    window.addEventListener('resize', scheduleRerender);
+    window.addEventListener('orientationchange', scheduleRerender);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', scheduleRerender);
+      window.removeEventListener('orientationchange', scheduleRerender);
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2850,19 +2893,40 @@ function PdfCanvas({
         for (const pageNumber of pageOrder) {
           const pdfPage = await pdf.getPage(pageNumber);
           const baseViewport = pdfPage.getViewport({ scale: 1 });
-          // PDF本体はSupabase Storageからバイナリのまま取得している。
-          // 表示時も端末のRetina密度まで描画し、低解像度へ意図的に落とさない。
-          // 上限はiPadでも安全に扱える高精細な32MPに留める。
-          const deviceScale = Math.min(window.devicePixelRatio || 1, 3);
-          const maxPixels = 32_000_000;
-          const pixelScaleLimit = Math.sqrt(
-            maxPixels / (baseViewport.width * baseViewport.height),
-          );
-          const renderScale = Math.max(
+          // CSS表示サイズとcanvas内部ピクセルを分離する。従来はPDFの基準
+          // サイズだけから内部解像度を決め、回転・リサイズ・ズーム時にCSSが
+          // canvasを拡大する余地があった。
+          const availableWidth = Math.max(1, container.clientWidth || window.innerWidth);
+          const availableHeight = Math.max(
             1,
-            Math.min(deviceScale, pixelScaleLimit),
+            Math.min(
+              container.clientHeight || window.innerHeight * 0.78,
+              window.innerHeight * 0.78,
+              880,
+            ),
           );
-          const viewport = pdfPage.getViewport({ scale: renderScale });
+          const cssScale = Math.max(
+            0.1,
+            Math.min(
+              availableWidth / baseViewport.width,
+              availableHeight / baseViewport.height,
+            ),
+          );
+          // iPad/MacのRetina (2x) を満たしつつ、3x端末と高倍率ズームで
+          // 全ページを過剰に保持しないよう出力密度を上限2.5x・12MP/ページに制限。
+          const deviceScale = Math.min(window.devicePixelRatio || 1, 2.5);
+          const zoomScale = Math.min(Math.max(renderZoom / 100, 1), 2);
+          const maxPixels = 12_000_000;
+          const pixelScaleLimit = Math.sqrt(
+            maxPixels / (baseViewport.width * baseViewport.height * cssScale * cssScale),
+          );
+          const outputScale = Math.max(
+            1,
+            Math.min(deviceScale * zoomScale, pixelScaleLimit),
+          );
+          const viewport = pdfPage.getViewport({
+            scale: cssScale * outputScale,
+          });
           const canvas = document.createElement('canvas');
           const context = canvas.getContext('2d');
           if (!context || cancelled) return;
@@ -2870,9 +2934,11 @@ function PdfCanvas({
           canvas.height = viewport.height;
           canvas.className = 'pdf-canvas';
           canvas.dataset.page = String(pageNumber);
+          canvas.dataset.outputScale = String(outputScale);
           canvas.style.display =
             pageNumber === currentPageRef.current ? 'block' : 'none';
-          canvas.style.height = 'min(78vh, 880px)';
+          canvas.style.width = `${Math.round(baseViewport.width * cssScale)}px`;
+          canvas.style.height = `${Math.round(baseViewport.height * cssScale)}px`;
           container.appendChild(canvas);
           const task = pdfPage.render({
             canvasContext: context,
@@ -2911,7 +2977,7 @@ function PdfCanvas({
       for (const task of renderTasks) task.cancel();
       void documentTask?.destroy();
     };
-  }, [onLoaded, pdfData]);
+  }, [onLoaded, pdfData, renderRevision, renderZoom]);
 
   useEffect(() => {
     const canvases =
