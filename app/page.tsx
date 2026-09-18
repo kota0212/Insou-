@@ -1974,7 +1974,7 @@ function AdminPdfList({
               <AlertDialogTitle>このPDFを削除しますか？</AlertDialogTitle>
               <AlertDialogDescription>
                 「{deleteTarget?.title}
-                」は、公開中のすべての店舗画面から削除され、Google
+                」は、公開中のすべての店舗画面から削除され、ストレージに
                 保存されているPDFファイルも削除されます。この操作は元に戻せません。
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -2413,7 +2413,7 @@ function StoreMenuList({
 }
 
 // ==========================================
-// 3. PDFビューアー (ダウンロード/共有UI排除・Drive URL完全隠蔽)
+// 3. PDFビューアー (ダウンロード/共有UI排除・ストレージURL完全隠蔽)
 // ==========================================
 function PdfViewer({
   menu,
