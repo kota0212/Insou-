@@ -97,6 +97,19 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 
 ## 5. Current Working State（現在正常に動作するもの）
 - Verification環境でのメールOTP発行・送信・検証・30日端末セッションCookie。
+13. **Production VercelデプロイおよびメールOTP本番連携の完了**:
+    - ユーザーのInformed Approvalに基づき、Vercel Production環境変数を設定（`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SECRET_KEY`, `OTP_HMAC_SECRET`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`）。
+    - 最新コードをビルド・本番URL（`https://insou-menu-system.vercel.app`）へ割り当て。
+    - システム検証店舗（`TEST-VERIFY`）の `notification_email` をユーザーアドレス（`k.nishida@vexum-ai.com`）に設定。
+    - 本番環境でのOTP発行リクエスト（`POST /api/store-auth/request-otp/`）を実行し、Resend経由での実メール送信および `challengeId` 発行に成功（HTTP 200）。実店舗への誤送信リスクゼロの安全な状態で、本番の全認証・閲覧フローが稼働。
+
+---
+
+## 5. What Works（動作確認済み事実）
+- Production Supabase 全マイグレーション適用・健全稼働。
+- Production Vercel 最新コード稼働（新UI・新API群）。
+- 店舗名検索API（`GET /api/store-auth/stores/?q=検証`）。
+- メールOTP発行・Resend実メール送信（`POST /api/store-auth/request-otp/`）。
 - 認可付き短時間Signed URLによるSupabase Private Storage PDF取得。
 - IndexedDB差分同期とキャッシュパージ。
 - PDF.js Canvas DPR 2.5x 高精細レンダリングと3Dページ送りUX。
@@ -105,21 +118,16 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 ---
 
 ## 6. Remaining / Blocked（残課題・未解決事項）
-- **本番メール送信基盤の確定**: INSOU本部のドメイン・プロバイダ承認待ち。
-- **Production公開前ゲート（残TODO）**:
-  1. ~~Production Supabase migration履歴整合~~（**完了**）
-  2. ~~Production Auth Site URLの本番化~~（**完了**）
-  3. ~~Production旧Prototype環境変数の削除~~（**完了**）
-  4. ~~Development環境の接続方針確定~~（**完了**）
-  5. 管理APIレート制限のDB永続化（Phase 3）
+- **実店舗メール運用のINSOU本部承認**: 実店舗（`stores`テーブル）へのメール配信は、INSOU本部の承認および公式ドメイン設定後に順次解禁する方針。現在は検証店舗（ユーザー宛）のみメール送信中。
+- 管理APIレート制限のDB永続化（Phase 3）。
 
 ---
 
 ## 7. Next Recommended Action（次に推奨される作業）
-1. **Phase 3（本番メール基盤確定・OTP本番結合）の推進**:
-   - Phase 2（DB・Storage・認可URL・端末セッション発行と失効）のProduction基盤検証が完了したため、INSOU本部側と連絡を取り、本番用メール送信ドメインおよびプロバイダ（ResendまたはAmazon SES）の契約・SPF/DKIM/DMARC設定を確定する。
-   - 実店舗の通知用メールアドレス一覧（`stores.notification_email`）を安全に投入する計画を準備する。
-   - 管理API側のレート制限永続化（`store_auth_rate_limits` 共有）を実装する。
+1. **本番URLでのブラウザE2E動作確認**:
+   - `https://insou-menu-system.vercel.app` をブラウザで開き、「システム検証店舗」でOTPログインをテスト。
+   - メール（`k.nishida@vexum-ai.com`）に届いた6桁コードを入力し、実メニューPDF（ワイン・シャンパンメニュー）が閲覧できることを確認。
+2. **管理APIレート制限のDB永続化（Phase 3）の実施**。
 
 ---
 

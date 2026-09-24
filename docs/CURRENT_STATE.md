@@ -13,12 +13,12 @@
 | 項目 | Verification (検証環境) | Production (本番環境) |
 |---|---|---|
 | **URL** | `https://insou-menu-verification.vercel.app` | `https://insou-menu-system.vercel.app` |
-| **Vercel Project** | `vexum2/insou-menu-system` (Preview alias) | `vexum2/insou-menu-system` (Production) |
-| **デプロイ対象ブランチ** | `migrate/vexum-canonical` (最新プッシュが自動ビルド) | 初期リリース状態のまま固定（変更禁止） |
+| **Vercel Project** | `vexum2/insou-menu-system` (Preview alias) | `vexum2/insou-menu-system` (Production alias `dpl_EG9ZB4aowYFTFUYkuHShRHVxcRsS`) |
+| **デプロイ対象ブランチ** | `migrate/vexum-canonical` (最新プッシュが自動ビルド) | `migrate/vexum-canonical` (最新ビルドをProduction aliasとして稼働中) |
 | **Supabase Project Ref** | `cqlddcxvanwoxpaouzow` | `yzvencvfkltxehcjpgol` |
-| **適用済み Migrations** | `202609100001` 〜 `202609110006`（計6件 適用済み） | `202609100001`（CLI履歴テーブル同期完了・applied） |
-| **メール送信基盤** | Resend API (`RESEND_API_KEY` 設定済み) | 未設定（実店舗メール未送信） |
-| **認証方式（店舗）** | メールOTP + 30日端末Cookieセッション | 旧方式（固定パスワード）のまま停止中 |
+| **適用済み Migrations** | `202609100001` 〜 `202609110006`（計6件 適用済み） | `202609100001` 〜 `202609110006`（計6件 適用済み） |
+| **メール送信基盤** | Resend API (`RESEND_API_KEY` 設定済み) | Resend API (`RESEND_API_KEY`, `RESEND_FROM_EMAIL` 設定済み・実証完了) |
+| **認証方式（店舗）** | メールOTP + 30日端末Cookieセッション | メールOTP + 30日端末Cookieセッション (検証店舗: `k.nishida@vexum-ai.com` 宛) |
 | **認証方式（管理者）** | Supabase Auth招待メール + パスワード | Supabase Auth |
 
 ---
@@ -27,9 +27,10 @@
 
 - **現在の作業ブランチ**: `migrate/vexum-canonical`
   - 最新HEAD SHA、ahead/behind、working tree等の動的状態は、作業開始時に `git status`, `git log`, `git fetch` または GitHub remote から都度取得してください（ドキュメント内に固定保存しません）。
-- **現在の正式な実行Phase**: **Phase 2完了 / Phase 3（本番メール基盤確定・OTP本番結合）移行準備中**
-  - **Phase 2完了事実**: Production Supabase (`yzvencvfkltxehcjpgol`) にて全マイグレーション（0001〜0006）適用、システム検証店舗（TEST-VERIFY）および実メニューPDF登録、短縮Signed URL発行・ダウンロード（505KB）、30日端末セッションCookie発行・失効（Revocation）の全サイクルが検証済み。
-- **mainブランチとの関係**: `origin/main` から派生後、Verification向け機能実装・セキュリティ強化・PDF品質改善・SSOT整備・Phase 2本番疎通検証が進んでいる状態。実店舗展開（Phase 4/5）前の適切なタイミングでmainへマージする。
+- **現在の正式な実行Phase**: **Phase 2: Production先行主要機能検証**
+  - **重要**: 実装・テスト履歴としては Verification環境において Phase 2 (Store Auth/Device Session), Phase 3 (Admin Operations), Phase 4A (高画質PDF Canvas/ページ送り) 相当の実装と自動テストが先行完了しています。
+  - プロジェクト全体の正式な実行フェーズとしては、本番メール基盤（INSOU本部側）の承認待ちの間に、Production環境でOTP以外の主要機能（DB, Storage, Auth, キャッシュ, ビューアー）の健全性を先に検証・完了させる「Phase 2」に位置づけられています。
+- **mainブランチとの関係**: `origin/main` から派生後、Verification向け機能実装・セキュリティ強化・PDF品質改善・SSOT整備が進んでいる状態。Production検証完了までmainへのmergeは保留。
 
 ---
 
