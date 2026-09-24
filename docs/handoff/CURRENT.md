@@ -3,7 +3,7 @@
 > **Updated**: 2026-09-24  
 > **Actor**: Antigravity  
 > **Branch**: `migrate/vexum-canonical`  
-> **Preceding Commit**: `feee00c` (docs: establish Informed Approval rule in AGENTS.md)  
+> **Preceding Commit**: `e06b0b9` (docs: mark TODO 1 completed after synchronizing Production migration history)  
 
 本書は、**次のAI / 開発者が作業を開始する直前に必ず確認する最新の引き継ぎメモ**です。
 
@@ -41,6 +41,9 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
    - ユーザーへ9項目の平易な説明を行い承認を獲得。
    - Session Mode Pooler経由で Production Supabase (`yzvencvfkltxehcjpgol`) に安全に接続し、`supabase migration repair 202609100001 --status applied` を実行。
    - `supabase migration list` にて `202609100001` が remote に `applied` として整合されたことを確認。`TODO.md` の TODO 1 を `DONE` に更新。
+7. **TODO 2. Production Auth Site URLの本番化完了**:
+   - ユーザーへ9項目の平易な説明を行い承認を獲得。
+   - ユーザーに配置いただいたアクセストークンを用いて、Supabase Management API経由で Production Supabase (`yzvencvfkltxehcjpgol`) の Site URL を `https://insou-menu-system.vercel.app` に、Redirect URLs を `https://insou-menu-system.vercel.app/**` に更新完了。GET検証で永続化を確認。`TODO.md` の TODO 2 を `DONE` に更新。
 
 ---
 
@@ -86,7 +89,7 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 - **本番メール送信基盤の確定**: INSOU本部のドメイン・プロバイダ承認待ち。
 - **Production公開前ゲート（残TODO）**:
   1. ~~Production Supabase migration履歴整合~~（**完了**）
-  2. Production Auth Site URLの本番化（TODO 2）
+  2. ~~Production Auth Site URLの本番化~~（**完了**）
   3. Production旧Prototype環境変数の削除（TODO 3）
   4. Development環境の接続方針確定（TODO 4）
   5. 管理APIレート制限のDB永続化
@@ -94,10 +97,10 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 ---
 
 ## 7. Next Recommended Action（次に推奨される作業）
-1. **TODO 2. Production Auth Site URLの本番化**:
-   - Production Supabase (`yzvencvfkltxehcjpgol`) の Auth Site URL を `http://localhost:3000` から `https://insou-menu-system.vercel.app` へ更新する（Informed Approval ルールに基づきユーザーへ説明・承認を得て実施）。
-2. **TODO 3 / 4 の実施**:
-   - Production Vercel 旧プロトタイプ環境変数の整理、ローカル開発接続方針の確定。
+1. **TODO 3. Production Vercel旧Prototype環境変数の整理**:
+   - Vercel本番環境（Production）に設定されている旧プロトタイプ環境変数（`NEXT_PUBLIC_PROTOTYPE_*`）の存在有無を確認・削除（Informed Approval ルールに基づきユーザーへ説明・承認を得て実施）。
+2. **TODO 4. Development環境の接続方針確定**:
+   - ローカル開発から誤ってProduction DBへ接続させない安全運用の確立。
 3. **Phase 2 Production先行検証の準備と実施**:
    - システム検証店舗限定の本番検証用ログインの準備と疎通確認。
 
