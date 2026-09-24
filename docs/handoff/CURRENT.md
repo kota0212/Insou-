@@ -83,9 +83,10 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 ---
 
 ## 7. Next Recommended Action（次に推奨される作業）
-1. **Phase 2 Production先行検証の準備**:
-   - 実店舗メールを使わず、「システム検証店舗」および「テストPDF」を用いて、Production環境（`insou-menu-system.vercel.app`）でOTP以外の主要機能（ストレージ、差分キャッシュ、ビューアー表示、管理操作）の疎通確認を計画・実施する。
-2. **Production公開前ゲート（TODO 1〜3）の着手準備**。
+1. **Phase 2 Production先行検証の準備と実施**:
+   - OTPを削除せず一時停止し、システム検証店舗限定の本番検証用ログインからOTP成功後と同等の `store_device_session` / HttpOnly Cookieを発行する処理を準備する。
+   - 実店舗メールを使わず、「システム検証店舗」および「テストPDF」を用いて、ユーザーの明示的な許可を得た上でProduction環境（`insou-menu-system.vercel.app`）でOTP以降の主要機能（ストレージ、差分キャッシュ、ビューアー表示、端末管理・一括ログアウト）の疎通確認を計画・実施する。
+2. **Production公開前ゲート（TODO 1〜4）の着手準備**。
 
 ---
 

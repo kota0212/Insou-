@@ -14,7 +14,7 @@
 |---|---|---|
 | **URL** | `https://insou-menu-verification.vercel.app` | `https://insou-menu-system.vercel.app` |
 | **Vercel Project** | `vexum2/insou-menu-system` (Preview alias) | `vexum2/insou-menu-system` (Production) |
-| **デプロイコミット** | `migrate/vexum-canonical` (最新 SSOT コミット) | 初期リリース状態のまま固定（変更禁止） |
+| **デプロイコミット** | `migrate/vexum-canonical` (最新 HEAD `25a5a756ece514c55e020388d6a5b2c89b725adf`) | 初期リリース状態のまま固定（変更禁止） |
 | **Supabase Project Ref** | `cqlddcxvanwoxpaouzow` | `yzvencvfkltxehcjpgol` |
 | **適用済み Migrations** | `202609100001` 〜 `202609110006`（計6件 適用済み） | `202609100001`（手動適用初期スキーマのみ） |
 | **メール送信基盤** | Resend API (`RESEND_API_KEY` 設定済み) | 未設定（実店舗メール未送信） |
@@ -23,25 +23,28 @@
 
 ---
 
-## 2. Git ブランチ情報
+## 2. Git ブランチとフェーズ情報
 
 - **現在の作業ブランチ**: `migrate/vexum-canonical`
-- **現在のHEAD**: `42c4ddbb6e3f995d01e7718172cb3a112904decb`
+- **現在のHEAD**: `25a5a756ece514c55e020388d6a5b2c89b725adf`
 - **origin同期状態**: `origin/migrate/vexum-canonical` と一致。Working tree clean。
-- **mainブランチとの関係**: `origin/main` から派生後、Verification向け機能実装・セキュリティ強化・PDF品質改善コミットが進んでいる状態。Production検証完了までmainへのmergeは保留。
+- **現在の正式な実行Phase**: **Phase 2: Production先行主要機能検証**
+  - **重要**: 実装・テスト履歴としては Verification環境において Phase 2 (Store Auth/Device Session), Phase 3 (Admin Operations), Phase 4A (高画質PDF Canvas/ページ送り) 相当の実装と自動テストが先行完了しています。
+  - プロジェクト全体の正式な実行フェーズとしては、本番メール基盤（INSOU本部側）の承認待ちの間に、Production環境でOTP以外の主要機能（DB, Storage, Auth, キャッシュ, ビューアー）の健全性を先に検証・完了させる「Phase 2」に位置づけられています。
+- **mainブランチとの関係**: `origin/main` から派生後、Verification向け機能実装・セキュリティ強化・PDF品質改善・SSOT整備が進んでいる状態。Production検証完了までmainへのmergeは保留。
 
 ---
 
 ## 3. 機能別の実装状態
 
-### 3.1 実装・検証完了（Verification上で動作確認済み）
+### 3.1 Verification環境での実装・検証完了状況（先行実装済み）
 
-- **PDFビューアー高画質化・ページ送り (Phase 4A)**:
+- **PDFビューアー高画質化・ページ送り (Phase 4A相当)**:
   - PDF.js Webpack worker連携 (`pdfjs-dist/webpack.mjs`)。
   - Canvas DPR（最大2.5x、12MP制限）高精細描画。
   - ResizeObserver親要素監視・8px閾値による再描画ループ解消。
   - 本めくり3Dエフェクト（裏面ページ透過、指追従スワイプ、ピンチズーム・パン移動）。
-- **店舗端末認証 API & DB (Phase 2)**:
+- **店舗端末認証 API & DB (Phase 2相当)**:
   - 店舗名検索API (`GET /api/store-auth/stores?q=`) ※is_active=trueのみ、部分一致、メールアドレス隠蔽、レート制限。
   - OTP発行・HMAC保存 (`POST /api/store-auth/request-otp`) ※challenge_id先行生成、HMAC-SHA256、15分有効。
   - OTPメール送信 (`lib/store-auth/email.ts`) ※Resend連携、送信失敗時のchallenge自動失効。

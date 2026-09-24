@@ -50,8 +50,8 @@
   - `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SECRET_KEY`, `OTP_HMAC_SECRET`, `RESEND_API_KEY`, signed URL, 平文パスワード, 平文OTPコードを絶対にgit commitやログ出力しない。
   - `NEXT_PUBLIC_*` に秘密情報を配置しない。
 - **Production環境の保護**:
-  - 明示的な指示・許可がない限り、**Production Supabase (`yzvencvfkltxehcjpgol`) および Production Vercel (`insou-menu-system.vercel.app`) を変更しない**。
-  - すべての開発・検証作業は Verification環境 (`cqlddcxvanwoxpaouzow` / `insou-menu-verification.vercel.app`) で行う。
+  - 原則として、日々の通常開発・検証作業は Verification環境 (`cqlddcxvanwoxpaouzow` / `insou-menu-verification.vercel.app`) で行います。
+  - `TODO.md` や ADR で明示された Production 検証（例: Phase 2 の手動初期スキーマ整合確認、システム検証店舗による本番疎通確認など）を実施する場合に限り、**ユーザーの明示的な指示・許可を得た作業のみ** Production Supabase (`yzvencvfkltxehcjpgol`) および Production Vercel (`insou-menu-system.vercel.app`) を対象とすることができます。独断での直接変更やデプロイは絶対に行わないでください。
 - **破壊的変更の禁止**:
   - 適用済みの既存DB migrationファイル（`202609100001`〜`202609110006`）を書き換えない。変更が必要な場合は必ず新しい番号のmigrationを追加する。
   - Production deployやmainブランチへのマージを勝手に実行しない。

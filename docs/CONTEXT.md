@@ -20,17 +20,18 @@
 
 ## 2. 現在のPhaseと主要ステータス
 
-- **開発フェーズ**: **Phase 4A 完了（Phase 2 Production先行検証前）**
-- **作業ブランチ**: `migrate/vexum-canonical` (最新 SSOT コミット)
+- **現在の正式な実行Phase**: **Phase 2: Production先行主要機能検証**
+  - （※Verification環境では先行してPhase 2/3/4A相当の実装・テストが完了済み。現在は本番メール承認待ちの間にProductionで主要機能を先行確認するPhase 2を実施中）
+- **作業ブランチ**: `migrate/vexum-canonical` (最新 HEAD: `25a5a756ece514c55e020388d6a5b2c89b725adf`)
 - **稼働環境**:
   - **Verification環境 (検証)**:
     - URL: `https://insou-menu-verification.vercel.app`
     - Supabase: `cqlddcxvanwoxpaouzow`
-    - 状態: Phase 2（Store OTP/Device Session）・Phase 3（Admin Operations）・Phase 4A（高画質PDF Canvas/ページめくりUX）実装済み。テスト全通過。
+    - 状態: Phase 2（Store OTP/Device Session）・Phase 3（Admin Operations）・Phase 4A（高画質PDF Canvas/ページめくりUX）先行実装済み。テスト全通過。
   - **Production環境 (本番)**:
     - URL: `https://insou-menu-system.vercel.app`
     - Supabase: `yzvencvfkltxehcjpgol`
-    - 状態: **変更禁止**。Phase 1の初期スキーマ状態を維持。
+    - 状態: Phase 2先行検証の対象（ユーザー許可を得た作業のみ実施）。初期スキーマ状態を維持。
 
 ---
 
@@ -69,7 +70,7 @@
 | **業務背景・UX・画面要件** | [`docs/PRODUCT.md`](./PRODUCT.md), [`docs/REQUIREMENTS.md`](./REQUIREMENTS.md) |
 | **全体システム構成・通信フロー** | [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) |
 | **DB設計・テーブル・RPC・RLS** | [`docs/DATABASE.md`](./DATABASE.md), [`supabase/migrations/`](../supabase/migrations/) |
-| **認証・認可・秘密鍵・セキュリティ** | [`docs/SECURITY.md`](./SECURITY.md), [`docs/decisions/ADR-0002-store-auth-otp.md`](./decisions/ADR-0002-store-auth-otp.md) |
+| **認証・認可・秘密鍵・セキュリティ** | [`docs/SECURITY.md`](./SECURITY.md), [`docs/decisions/ADR-0002-store-auth-otp-and-device-session.md`](./decisions/ADR-0002-store-auth-otp-and-device-session.md) |
 | **設計判断の経緯・理由の確認** | [`docs/decisions/README.md`](./decisions/README.md) 配下のADR |
 | **過去のバグ・罠・トラブルシュート** | [`docs/troubleshooting/README.md`](./troubleshooting/README.md) |
 | **過去の作業履歴（月次）** | [`docs/history/`](./history/) |

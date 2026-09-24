@@ -15,6 +15,7 @@ Phase 2〜4において、Verification環境ではOTP認証・セッション・
    - `app/api/store-auth/`、`lib/store-auth/`、`components/store-otp-login.tsx`、テストスクリプト等は一切削除・ロールバックせず、Verification環境で完全動作を維持する。
 2. **Production先行検証の実施**:
    - Production環境では、実店舗ではなく「システム検証店舗」および「テストPDF」を用いて、OTP以外の主要機能（PDF配信、IndexedDB差分同期、RLS、管理者機能）の健全性を先に検証する。
+   - その際、OTPを削除せず一時停止し、システム検証店舗限定の本番検証用ログインからOTP成功後と同等の `store_device_session` / HttpOnly Cookie を発行することで、OTP以降のProduction端末経路および一括失効フローを検証する。本番検証用ログインは実店舗公開前のPhase 3完了までに必ず廃止・削除する。
 3. **実店舗展開前のOTP本番結合**:
    - INSOU本部のメール基盤が確定した段階で本番環境変数を設定し、実店舗パイロット展開（Phase 5）の直前にOTPを本番有効化する。
 
