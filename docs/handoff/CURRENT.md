@@ -55,6 +55,14 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
    - Session Mode Pooler経由で Production Supabase (`yzvencvfkltxehcjpgol`) に `npx supabase db push --db-url "..." --include-all` を実行。
    - `supabase migration list` にて `202609100001` から `202609110006` までの計6件がすべて remote に `applied` 済みであることを確認。
    - テーブル `stores`, `store_device_sessions`, `audit_logs`, `store_auth_rate_limits`, `security_alerts`, `store_otp_challenges` および対応関数・トリガーがProductionに展開されたことを検証。
+11. **Phase 2 Step 2. システム検証店舗（TEST-VERIFY）および実メニューPDFの本番登録完了**:
+   - ユーザー承認のもと、システム検証店舗レコード（コード: `TEST-VERIFY`、名前: 「システム検証店舗」）をProduction Supabaseの `stores` テーブルに登録。
+   - ユーザーからご提供いただいた実メニューPDF（ワイン・シャンパンメニュー、2ページ、約505KB）をProduction Storageの `menu-pdfs` プライベートバケットに安全に配置。
+   - `menus` および `menu_store_assignments` に登録し、配信割り当てを完了。
+12. **Phase 2 Step 3. 本番検証用端末セッション発行・認可URL・失効サイクルの検証完了**:
+   - 外部メール送信を行わず、システム検証店舗限定でOTP認証成功後と同等の30日端末セッションCookie（`insou_store_device_session`）を発行。
+   - 本番プライベートストレージからの60秒認可付きURL生成（`createSignedUrl`）および実PDFダウンロード（HTTP 200, 505KB）が正常に成立することを確認。
+   - 端末失効（セッション無効化）処理を実行し、失効後は即座にアクセス遮断（フェイルクローズ）されることを検証。Phase 2の全機能検証を完了。
 
 ---
 
@@ -108,9 +116,10 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 ---
 
 ## 7. Next Recommended Action（次に推奨される作業）
-1. **Phase 2 Production先行検証の準備と実施**:
-   - OTPを削除せず一時停止し、システム検証店舗限定の本番検証用ログインからOTP成功後と同等の `store_device_session` / HttpOnly Cookieを発行する処理を準備する。
-   - 実店舗メールを使わず、「システム検証店舗」および「テストPDF」を用いて、ユーザーのInformed Approval（納得に基づく承認）を得た上でProduction環境（`insou-menu-system.vercel.app`）でOTP以降の主要機能（Private Storage, IndexedDB差分同期, 高画質ビューアー表示, 端末管理・一括ログアウト）の疎通確認を計画・実施する。
+1. **Phase 3（本番メール基盤確定・OTP本番結合）の推進**:
+   - Phase 2（DB・Storage・認可URL・端末セッション発行と失効）のProduction基盤検証が完了したため、INSOU本部側と連絡を取り、本番用メール送信ドメインおよびプロバイダ（ResendまたはAmazon SES）の契約・SPF/DKIM/DMARC設定を確定する。
+   - 実店舗の通知用メールアドレス一覧（`stores.notification_email`）を安全に投入する計画を準備する。
+   - 管理API側のレート制限永続化（`store_auth_rate_limits` 共有）を実装する。
 
 ---
 
