@@ -69,6 +69,14 @@ git diff --check
 - **Supabase**: `yzvencvfkltxehcjpgol`
 - **ルール**: 明示的な許可があるまで、ProductionのDB、環境変数、デプロイは一切変更しない。
 
+### 3.3 Development環境（ローカルPC）の接続方針【厳守】
+- **接続先**: ローカル開発（`npm run dev`）は**必ず Verification環境 (`cqlddcxvanwoxpaouzow`)** または ローカルSupabase を接続先として使用します。
+- **Production DB直接接続の禁止**:
+  - ローカルの `.env.local` に Production Supabase (`yzvencvfkltxehcjpgol`) の URL や APIキー、DBパスワードを設定することは**固く禁止**します。
+  - 理由: 開発中のコードバグ、手動確認、自動テスト実行等によって、実店舗の本番データが上書き・破壊・汚染される事故を根本から防止するためです。
+- **本番作業時の例外運用**:
+  - `TODO.md` で明示され、ユーザーから「Informed Approval（納得に基づく承認）」を得た本番作業（マイグレーション履歴整合など）を実施する場合に限り、専用ファイル `.env.production.local`（Git除外・パーミッション600）を用いて一時的に接続します。作業完了後は通常開発用接続へ戻します。
+
 ---
 
 ## 4. マイグレーション運用ルール

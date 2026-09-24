@@ -102,7 +102,9 @@
    - `http://localhost:3000` から `https://insou-menu-system.vercel.app` へ更新完了。Redirect URLs に `https://insou-menu-system.vercel.app/**` を登録。
 3. **Production Vercel環境変数の整理**: 【完了】
    - 旧プロトタイプ変数（`NEXT_PUBLIC_PROTOTYPE_*`）を本番環境から削除完了。
-4. **管理APIレート制限のDB共有化**:
+4. **Development環境の接続方針確定**: 【完了】
+   - ローカル開発（.env.local）からProduction DBへの接続禁止ルールを明文化し、.env.example および docs/DEVELOPMENT.md を整備完了。
+5. **管理APIレート制限のDB共有化**:
    - 現在Store Auth APIはDB永続化レート制限を使用しているが、管理API側インメモリMapも共有化する。
-5. **本番メール送信サービスの確定**:
+6. **本番メール送信サービスの確定**:
    - INSOU本部とドメイン・プロバイダの選定・契約を行う。

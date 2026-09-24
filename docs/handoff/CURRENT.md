@@ -3,14 +3,14 @@
 > **Updated**: 2026-09-24  
 > **Actor**: Antigravity  
 > **Branch**: `migrate/vexum-canonical`  
-> **Preceding Commit**: `fefd93f` (docs: mark TODO 2 completed after updating Production Auth Site URL)  
+> **Preceding Commit**: `5586fa0` (docs: mark TODO 3 completed after purging Prototype env vars from Production Vercel)  
 
 本書は、**次のAI / 開発者が作業を開始する直前に必ず確認する最新の引き継ぎメモ**です。
 
 ---
 
 ## 1. Goal（今回の目的）
-INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Antigravity / 人間が共通して参照できる「正式な情報源（Single Source of Truth）」として機能する構成へ整理・再編すること。また、Phase 2先行検証に向けたProduction環境前準備を進める。
+INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Antigravity / 人間が共通して参照できる「正式な情報源（Single Source of Truth）」として機能する構成へ整理・再編すること。また、Phase 2先行検証に向けたProduction公開前ゲート（TODO 1〜4）を完了させる。
 
 ---
 
@@ -47,6 +47,9 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 8. **TODO 3. Production Vercel旧Prototype環境変数の整理完了**:
    - ユーザーへ9項目の平易な説明を行い承認を獲得。
    - Vercel本番環境から初期試作用の `NEXT_PUBLIC_PROTOTYPE_*` 5変数の削除を完了。テスト用固定コード・暗証番号の露出リスクを排除。`TODO.md` の TODO 3 を `DONE` に更新。
+9. **TODO 4. Development環境の接続方針確定完了**:
+   - ユーザーへ9項目の平易な説明を行い承認を獲得。
+   - ローカル開発（.env.local）からProduction DBへの接続禁止ルールを明文化。.env.example から旧プロトタイプ設定を削除し接続先方針を反映。docs/DEVELOPMENT.md に接続先ルールを追記。`TODO.md` の TODO 4 を `DONE` に更新。Phase 2公開前ゲート（TODO 1〜4）を全完了。
 
 ---
 
@@ -94,16 +97,15 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
   1. ~~Production Supabase migration履歴整合~~（**完了**）
   2. ~~Production Auth Site URLの本番化~~（**完了**）
   3. ~~Production旧Prototype環境変数の削除~~（**完了**）
-  4. Development環境の接続方針確定（TODO 4）
-  5. 管理APIレート制限のDB永続化
+  4. ~~Development環境の接続方針確定~~（**完了**）
+  5. 管理APIレート制限のDB永続化（Phase 3）
 
 ---
 
 ## 7. Next Recommended Action（次に推奨される作業）
-1. **TODO 4. Development環境の接続方針確定**:
-   - ローカル開発から誤ってProduction DBへ接続させない安全運用の確立（`.env.example` の整理、開発用環境変数分離ルール）。
-2. **Phase 2 Production先行検証の準備と実施**:
-   - システム検証店舗限定の本番検証用ログインの準備と疎通確認。
+1. **Phase 2 Production先行検証の準備と実施**:
+   - OTPを削除せず一時停止し、システム検証店舗限定の本番検証用ログインからOTP成功後と同等の `store_device_session` / HttpOnly Cookieを発行する処理を準備する。
+   - 実店舗メールを使わず、「システム検証店舗」および「テストPDF」を用いて、ユーザーのInformed Approval（納得に基づく承認）を得た上でProduction環境（`insou-menu-system.vercel.app`）でOTP以降の主要機能（Private Storage, IndexedDB差分同期, 高画質ビューアー表示, 端末管理・一括ログアウト）の疎通確認を計画・実施する。
 
 ---
 
