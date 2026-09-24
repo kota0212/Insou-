@@ -50,6 +50,11 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 9. **TODO 4. Development環境の接続方針確定完了**:
    - ユーザーへ9項目の平易な説明を行い承認を獲得。
    - ローカル開発（.env.local）からProduction DBへの接続禁止ルールを明文化。.env.example から旧プロトタイプ設定を削除し接続先方針を反映。docs/DEVELOPMENT.md に接続先ルールを追記。`TODO.md` の TODO 4 を `DONE` に更新。Phase 2公開前ゲート（TODO 1〜4）を全完了。
+10. **Phase 2 Step 1. Production DB残マイグレーション（202609110002〜0006）の適用完了**:
+   - ユーザーへInformed Approval（納得に基づく承認）の9項目を平易に説明し承認を獲得。
+   - Session Mode Pooler経由で Production Supabase (`yzvencvfkltxehcjpgol`) に `npx supabase db push --db-url "..." --include-all` を実行。
+   - `supabase migration list` にて `202609100001` から `202609110006` までの計6件がすべて remote に `applied` 済みであることを確認。
+   - テーブル `stores`, `store_device_sessions`, `audit_logs`, `store_auth_rate_limits`, `security_alerts`, `store_otp_challenges` および対応関数・トリガーがProductionに展開されたことを検証。
 
 ---
 

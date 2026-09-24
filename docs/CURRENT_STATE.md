@@ -16,7 +16,7 @@
 | **Vercel Project** | `vexum2/insou-menu-system` (Preview alias) | `vexum2/insou-menu-system` (Production) |
 | **デプロイ対象ブランチ** | `migrate/vexum-canonical` (最新プッシュが自動ビルド) | 初期リリース状態のまま固定（変更禁止） |
 | **Supabase Project Ref** | `cqlddcxvanwoxpaouzow` | `yzvencvfkltxehcjpgol` |
-| **適用済み Migrations** | `202609100001` 〜 `202609110006`（計6件 適用済み） | `202609100001`（CLI履歴テーブル同期完了・applied） |
+| **適用済み Migrations** | `202609100001` 〜 `202609110006`（計6件 適用済み） | `202609100001` 〜 `202609110006`（計6件 適用済み・Verificationと同等） |
 | **メール送信基盤** | Resend API (`RESEND_API_KEY` 設定済み) | 未設定（実店舗メール未送信） |
 | **認証方式（店舗）** | メールOTP + 30日端末Cookieセッション | 旧方式（固定パスワード）のまま停止中 |
 | **認証方式（管理者）** | Supabase Auth招待メール + パスワード | Supabase Auth |
@@ -102,9 +102,7 @@
    - `http://localhost:3000` から `https://insou-menu-system.vercel.app` へ更新完了。Redirect URLs に `https://insou-menu-system.vercel.app/**` を登録。
 3. **Production Vercel環境変数の整理**: 【完了】
    - 旧プロトタイプ変数（`NEXT_PUBLIC_PROTOTYPE_*`）を本番環境から削除完了。
-4. **Development環境の接続方針確定**: 【完了】
-   - ローカル開発（.env.local）からProduction DBへの接続禁止ルールを明文化し、.env.example および docs/DEVELOPMENT.md を整備完了。
-5. **管理APIレート制限のDB共有化**:
+4. **管理APIレート制限のDB共有化**:
    - 現在Store Auth APIはDB永続化レート制限を使用しているが、管理API側インメモリMapも共有化する。
-6. **本番メール送信サービスの確定**:
+5. **本番メール送信サービスの確定**:
    - INSOU本部とドメイン・プロバイダの選定・契約を行う。

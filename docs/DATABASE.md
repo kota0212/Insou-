@@ -183,3 +183,17 @@ Vercelの複数インスタンス環境で安全に共有される永続化レ�
   - `stores`, `menus`, `user_profiles`, `menu_store_assignments` へのSELECT/INSERT/UPDATE/DELETE権限。
 - **特権操作（service_role）**:
   - OTP生成・セッション管理・失効処理などの機微関数は、パブリックEXECUTE権限を剥奪（`REVOKE ALL ... FROM public, anon, authenticated`）し、サーバー側の `SUPABASE_SECRET_KEY` からのみ実行可能。
+
+---
+
+## 5. マイグレーション適用状況
+
+| マイグレーション番号 | 内容 | Verification (`cqlddcxvanwoxpaouzow`) | Production (`yzvencvfkltxehcjpgol`) |
+|---|---|---|---|
+| `202609100001` | 初期スキーマ（stores, menus, assignments, profiles） | 適用済み (applied) | 適用済み (applied) |
+| `202609110002` | store_otp, device_sessions, alerts, audit_logs | 適用済み (applied) | 適用済み (applied) |
+| `202609110003` | RPC権限剥奪・再送追跡強化 | 適用済み (applied) | 適用済み (applied) |
+| `202609110004` | メールユニーク制約・HMAC連携改修 | 適用済み (applied) | 適用済み (applied) |
+| `202609110005` | メール正規化一意インデックス・台数整合関数改修 | 適用済み (applied) | 適用済み (applied) |
+| `202609110006` | store_auth_rate_limits (永続化レート制限) | 適用済み (applied) | 適用済み (applied) |
+
