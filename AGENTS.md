@@ -41,6 +41,12 @@
 > - 会話やチャットの中だけで重要仕様を確定してはならない。GitHubへ反映されて初めて正式決定となる。
 > - コードとドキュメントの重大な乖離を見つけた場合、独断で片方を正解とせず、作業前または作業報告で不一致を明示する。
 
+### 動的Git情報（Dynamic Git State）の扱い
+- 現在のHEAD SHA、ahead/behind、working tree状態など、Gitから直接取得できる動的情報を `docs/CURRENT_STATE.md` や `docs/CONTEXT.md` へ固定値として保存してはならない（コミットのたびに自己矛盾するため）。
+- 現在の動的Git状態は、作業開始時に `git status`, `git log`, `git fetch` または GitHub remote から直接取得する。
+- ドキュメントには、branch運用方針や「どのbranchがProductionの正本か」など、継続的に意味を持つ情報のみを保存する。
+- 特定commitがDeployment、障害、意思決定等に関係する場合は、`docs/history/`, `docs/handoff/`, `docs/troubleshooting/`, `docs/decisions/` 等へ履歴情報としてSHAを記録してよい。
+
 ---
 
 ## 3. 実装時の絶対厳守ルール

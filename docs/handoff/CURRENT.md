@@ -31,6 +31,9 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
    - `TODO.md`: 過去の完了チェックを全排除し、Phase 2〜5の現在未完了TODOへ再構成。
    - 旧ファイル（`システム完成計画.txt`, `店舗ログイン認証仕様.txt`, `docs/mvp-spec.md`, `docs/production-spec.md`, `変更したい点.txt`）を `docs/archive/` へ移動し、DEPRECATED警告を付与。
    - `README.md`: 人間とAIのポータルとして刷新。
+4. **動的Git情報の分離方針の確立**:
+   - コミットのたびに自己矛盾を招く「現在のHEAD SHA」のMarkdown内固定保存を廃止。
+   - Git/GitHubを動的情報の正本とし、ドキュメントには継続的な運用方針のみを記載するルールを `AGENTS.md` へ追加。
 
 ---
 

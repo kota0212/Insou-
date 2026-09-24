@@ -14,7 +14,7 @@
 |---|---|---|
 | **URL** | `https://insou-menu-verification.vercel.app` | `https://insou-menu-system.vercel.app` |
 | **Vercel Project** | `vexum2/insou-menu-system` (Preview alias) | `vexum2/insou-menu-system` (Production) |
-| **デプロイコミット** | `migrate/vexum-canonical` (最新 HEAD `25a5a756ece514c55e020388d6a5b2c89b725adf`) | 初期リリース状態のまま固定（変更禁止） |
+| **デプロイ対象ブランチ** | `migrate/vexum-canonical` (最新プッシュが自動ビルド) | 初期リリース状態のまま固定（変更禁止） |
 | **Supabase Project Ref** | `cqlddcxvanwoxpaouzow` | `yzvencvfkltxehcjpgol` |
 | **適用済み Migrations** | `202609100001` 〜 `202609110006`（計6件 適用済み） | `202609100001`（手動適用初期スキーマのみ） |
 | **メール送信基盤** | Resend API (`RESEND_API_KEY` 設定済み) | 未設定（実店舗メール未送信） |
@@ -26,8 +26,7 @@
 ## 2. Git ブランチとフェーズ情報
 
 - **現在の作業ブランチ**: `migrate/vexum-canonical`
-- **現在のHEAD**: `25a5a756ece514c55e020388d6a5b2c89b725adf`
-- **origin同期状態**: `origin/migrate/vexum-canonical` と一致。Working tree clean。
+  - 最新HEAD SHA、ahead/behind、working tree等の動的状態は、作業開始時に `git status`, `git log`, `git fetch` または GitHub remote から都度取得してください（ドキュメント内に固定保存しません）。
 - **現在の正式な実行Phase**: **Phase 2: Production先行主要機能検証**
   - **重要**: 実装・テスト履歴としては Verification環境において Phase 2 (Store Auth/Device Session), Phase 3 (Admin Operations), Phase 4A (高画質PDF Canvas/ページ送り) 相当の実装と自動テストが先行完了しています。
   - プロジェクト全体の正式な実行フェーズとしては、本番メール基盤（INSOU本部側）の承認待ちの間に、Production環境でOTP以外の主要機能（DB, Storage, Auth, キャッシュ, ビューアー）の健全性を先に検証・完了させる「Phase 2」に位置づけられています。

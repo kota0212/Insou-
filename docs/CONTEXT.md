@@ -22,7 +22,7 @@
 
 - **現在の正式な実行Phase**: **Phase 2: Production先行主要機能検証**
   - （※Verification環境では先行してPhase 2/3/4A相当の実装・テストが完了済み。現在は本番メール承認待ちの間にProductionで主要機能を先行確認するPhase 2を実施中）
-- **作業ブランチ**: `migrate/vexum-canonical` (最新 HEAD: `25a5a756ece514c55e020388d6a5b2c89b725adf`)
+- **作業ブランチ**: `migrate/vexum-canonical`（最新commitはGitHub / Gitから都度取得）
 - **稼働環境**:
   - **Verification環境 (検証)**:
     - URL: `https://insou-menu-verification.vercel.app`
