@@ -16,7 +16,7 @@
 | **Vercel Project** | `vexum2/insou-menu-system` (Preview alias) | `vexum2/insou-menu-system` (Production) |
 | **デプロイ対象ブランチ** | `migrate/vexum-canonical` (最新プッシュが自動ビルド) | 初期リリース状態のまま固定（変更禁止） |
 | **Supabase Project Ref** | `cqlddcxvanwoxpaouzow` | `yzvencvfkltxehcjpgol` |
-| **適用済み Migrations** | `202609100001` 〜 `202609110006`（計6件 適用済み） | `202609100001`（手動適用初期スキーマのみ） |
+| **適用済み Migrations** | `202609100001` 〜 `202609110006`（計6件 適用済み） | `202609100001`（CLI履歴テーブル同期完了・applied） |
 | **メール送信基盤** | Resend API (`RESEND_API_KEY` 設定済み) | 未設定（実店舗メール未送信） |
 | **認証方式（店舗）** | メールOTP + 30日端末Cookieセッション | 旧方式（固定パスワード）のまま停止中 |
 | **認証方式（管理者）** | Supabase Auth招待メール + パスワード | Supabase Auth |
@@ -96,8 +96,8 @@
 
 ## 5. Production公開前ゲート（残TODO）
 
-1. **Production Supabase migration履歴の整合**:
-   - Production初期スキーマ（`202609100001`相当）が手動適用されているため、Supabase CLI履歴テーブルと同期させる。
+1. **Production Supabase migration履歴の整合**: 【完了】
+   - Production初期スキーマ（`202609100001`）とSupabase CLI履歴テーブル（`supabase_migrations.schema_migrations`）を同期完了（applied）。
 2. **Production Supabase Auth Site URLの本番化**:
    - `http://localhost:3000` から `https://insou-menu-system.vercel.app` へ更新。
 3. **Production Vercel環境変数の整理**:

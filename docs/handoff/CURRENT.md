@@ -3,14 +3,14 @@
 > **Updated**: 2026-09-24  
 > **Actor**: Antigravity  
 > **Branch**: `migrate/vexum-canonical`  
-> **Preceding Commit**: `3884b63` (docs: revise production protection rule to obtain user permission and execute)  
+> **Preceding Commit**: `feee00c` (docs: establish Informed Approval rule in AGENTS.md)  
 
 本書は、**次のAI / 開発者が作業を開始する直前に必ず確認する最新の引き継ぎメモ**です。
 
 ---
 
 ## 1. Goal（今回の目的）
-INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Antigravity / 人間が共通して参照できる「正式な情報源（Single Source of Truth）」として機能する構成へ整理・再編すること。機能コードの追加やProductionへの変更は行わない。
+INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Antigravity / 人間が共通して参照できる「正式な情報源（Single Source of Truth）」として機能する構成へ整理・再編すること。また、Phase 2先行検証に向けたProduction環境前準備を進める。
 
 ---
 
@@ -36,10 +36,11 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
    - Git/GitHubを動的情報の正本とし、ドキュメントには継続的な運用方針のみを記載するルールを `AGENTS.md` へ追加。
 5. **ユーザー承認・説明責任ルール（Informed Approval）の制定**:
    - `AGENTS.md` にセクション「4. ユーザー承認・説明責任ルール（Informed Approval）」を新設。
-   - ユーザーは開発・ITの前提知識はあるがインフラ・DB・認証等の専門家ではない前提に立ち、専門用語の平易な解説を義務化。
-   - 承認前に説明すべき9項目（内容、理由、現状、変化、不実施時の影響、想定リスク、切り戻し可否、非変更範囲、実行後確認）を定義。
-   - Production DB変更、deploy、merge等14の重要操作での明示的説明と納得に基づく承認を必須化。
-   - 承認範囲の厳守、不明点がある場合の事前調査・説明ルールを明文化。単なるYes/No取得の禁止。
+   - 専門用語の平易な解説を義務化し、承認前必須9項目を定義。
+6. **TODO 1. Production Supabase migration履歴の整合完了**:
+   - ユーザーへ9項目の平易な説明を行い承認を獲得。
+   - Session Mode Pooler経由で Production Supabase (`yzvencvfkltxehcjpgol`) に安全に接続し、`supabase migration repair 202609100001 --status applied` を実行。
+   - `supabase migration list` にて `202609100001` が remote に `applied` として整合されたことを確認。`TODO.md` の TODO 1 を `DONE` に更新。
 
 ---
 
@@ -83,19 +84,22 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 
 ## 6. Remaining / Blocked（残課題・未解決事項）
 - **本番メール送信基盤の確定**: INSOU本部のドメイン・プロバイダ承認待ち。
-- **Production公開前ゲート**:
-  1. Production Supabase migration履歴整合。
-  2. Production Auth Site URLの本番化。
-  3. Production旧Prototype環境変数の削除。
-  4. 管理APIレート制限のDB永続化。
+- **Production公開前ゲート（残TODO）**:
+  1. ~~Production Supabase migration履歴整合~~（**完了**）
+  2. Production Auth Site URLの本番化（TODO 2）
+  3. Production旧Prototype環境変数の削除（TODO 3）
+  4. Development環境の接続方針確定（TODO 4）
+  5. 管理APIレート制限のDB永続化
 
 ---
 
 ## 7. Next Recommended Action（次に推奨される作業）
-1. **Phase 2 Production先行検証の準備と実施**:
-   - OTPを削除せず一時停止し、システム検証店舗限定の本番検証用ログインからOTP成功後と同等の `store_device_session` / HttpOnly Cookieを発行する処理を準備する。
-   - 実店舗メールを使わず、「システム検証店舗」および「テストPDF」を用いて、ユーザーの明示的な許可を得た上でProduction環境（`insou-menu-system.vercel.app`）でOTP以降の主要機能（ストレージ、差分キャッシュ、ビューアー表示、端末管理・一括ログアウト）の疎通確認を計画・実施する。
-2. **Production公開前ゲート（TODO 1〜4）の着手準備**。
+1. **TODO 2. Production Auth Site URLの本番化**:
+   - Production Supabase (`yzvencvfkltxehcjpgol`) の Auth Site URL を `http://localhost:3000` から `https://insou-menu-system.vercel.app` へ更新する（Informed Approval ルールに基づきユーザーへ説明・承認を得て実施）。
+2. **TODO 3 / 4 の実施**:
+   - Production Vercel 旧プロトタイプ環境変数の整理、ローカル開発接続方針の確定。
+3. **Phase 2 Production先行検証の準備と実施**:
+   - システム検証店舗限定の本番検証用ログインの準備と疎通確認。
 
 ---
 

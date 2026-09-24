@@ -11,7 +11,7 @@
 
 | Priority | Task | Phase | Status | Blocked by |
 |---|---|---|---|---|
-| **P0** | **TODO 1. Production Supabase migration履歴の整合**<br>手動適用された初期スキーマとCLI履歴テーブルを安全に同期する | Phase 2 Pre | **TODO** | なし |
+| **P0** | **TODO 1. Production Supabase migration履歴の整合**<br>手動適用された初期スキーマとCLI履歴テーブルを安全に同期する | Phase 2 Pre | **DONE** | なし |
 | **P0** | **TODO 2. Production Auth Site URLの本番化**<br>`http://localhost:3000` から本番URLへ更新 | Phase 2 Pre | **TODO** | なし |
 | **P1** | **TODO 3. Production Vercel旧Prototype環境変数の整理**<br>`NEXT_PUBLIC_PROTOTYPE_*` 等の削除 | Phase 2 Pre | **TODO** | なし |
 | **P1** | **TODO 4. Development環境の接続方針確定**<br>ローカルからProduction DBへ接続させない運用の徹底 | Phase 2 Pre | **TODO** | なし |
