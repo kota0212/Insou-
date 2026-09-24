@@ -100,8 +100,8 @@
    - Production初期スキーマ（`202609100001`）とSupabase CLI履歴テーブル（`supabase_migrations.schema_migrations`）を同期完了（applied）。
 2. **Production Supabase Auth Site URLの本番化**: 【完了】
    - `http://localhost:3000` から `https://insou-menu-system.vercel.app` へ更新完了。Redirect URLs に `https://insou-menu-system.vercel.app/**` を登録。
-3. **Production Vercel環境変数の整理**:
-   - 旧プロトタイプ変数（`NEXT_PUBLIC_PROTOTYPE_*`）の削除。
+3. **Production Vercel環境変数の整理**: 【完了】
+   - 旧プロトタイプ変数（`NEXT_PUBLIC_PROTOTYPE_*`）を本番環境から削除完了。
 4. **管理APIレート制限のDB共有化**:
    - 現在Store Auth APIはDB永続化レート制限を使用しているが、管理API側インメモリMapも共有化する。
 5. **本番メール送信サービスの確定**:

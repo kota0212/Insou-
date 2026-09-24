@@ -3,7 +3,7 @@
 > **Updated**: 2026-09-24  
 > **Actor**: Antigravity  
 > **Branch**: `migrate/vexum-canonical`  
-> **Preceding Commit**: `e06b0b9` (docs: mark TODO 1 completed after synchronizing Production migration history)  
+> **Preceding Commit**: `fefd93f` (docs: mark TODO 2 completed after updating Production Auth Site URL)  
 
 本書は、**次のAI / 開発者が作業を開始する直前に必ず確認する最新の引き継ぎメモ**です。
 
@@ -44,6 +44,9 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 7. **TODO 2. Production Auth Site URLの本番化完了**:
    - ユーザーへ9項目の平易な説明を行い承認を獲得。
    - ユーザーに配置いただいたアクセストークンを用いて、Supabase Management API経由で Production Supabase (`yzvencvfkltxehcjpgol`) の Site URL を `https://insou-menu-system.vercel.app` に、Redirect URLs を `https://insou-menu-system.vercel.app/**` に更新完了。GET検証で永続化を確認。`TODO.md` の TODO 2 を `DONE` に更新。
+8. **TODO 3. Production Vercel旧Prototype環境変数の整理完了**:
+   - ユーザーへ9項目の平易な説明を行い承認を獲得。
+   - Vercel本番環境から初期試作用の `NEXT_PUBLIC_PROTOTYPE_*` 5変数の削除を完了。テスト用固定コード・暗証番号の露出リスクを排除。`TODO.md` の TODO 3 を `DONE` に更新。
 
 ---
 
@@ -90,18 +93,16 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 - **Production公開前ゲート（残TODO）**:
   1. ~~Production Supabase migration履歴整合~~（**完了**）
   2. ~~Production Auth Site URLの本番化~~（**完了**）
-  3. Production旧Prototype環境変数の削除（TODO 3）
+  3. ~~Production旧Prototype環境変数の削除~~（**完了**）
   4. Development環境の接続方針確定（TODO 4）
   5. 管理APIレート制限のDB永続化
 
 ---
 
 ## 7. Next Recommended Action（次に推奨される作業）
-1. **TODO 3. Production Vercel旧Prototype環境変数の整理**:
-   - Vercel本番環境（Production）に設定されている旧プロトタイプ環境変数（`NEXT_PUBLIC_PROTOTYPE_*`）の存在有無を確認・削除（Informed Approval ルールに基づきユーザーへ説明・承認を得て実施）。
-2. **TODO 4. Development環境の接続方針確定**:
-   - ローカル開発から誤ってProduction DBへ接続させない安全運用の確立。
-3. **Phase 2 Production先行検証の準備と実施**:
+1. **TODO 4. Development環境の接続方針確定**:
+   - ローカル開発から誤ってProduction DBへ接続させない安全運用の確立（`.env.example` の整理、開発用環境変数分離ルール）。
+2. **Phase 2 Production先行検証の準備と実施**:
    - システム検証店舗限定の本番検証用ログインの準備と疎通確認。
 
 ---

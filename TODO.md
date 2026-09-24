@@ -13,7 +13,7 @@
 |---|---|---|---|---|
 | **P0** | **TODO 1. Production Supabase migration履歴の整合**<br>手動適用された初期スキーマとCLI履歴テーブルを安全に同期する | Phase 2 Pre | **DONE** | なし |
 | **P0** | **TODO 2. Production Auth Site URLの本番化**<br>`http://localhost:3000` から本番URLへ更新 | Phase 2 Pre | **DONE** | なし |
-| **P1** | **TODO 3. Production Vercel旧Prototype環境変数の整理**<br>`NEXT_PUBLIC_PROTOTYPE_*` 等の削除 | Phase 2 Pre | **TODO** | なし |
+| **P1** | **TODO 3. Production Vercel旧Prototype環境変数の整理**<br>`NEXT_PUBLIC_PROTOTYPE_*` 等の削除 | Phase 2 Pre | **DONE** | なし |
 | **P1** | **TODO 4. Development環境の接続方針確定**<br>ローカルからProduction DBへ接続させない運用の徹底 | Phase 2 Pre | **TODO** | なし |
 | **P0** | **本番検証用ログインの実装とProduction主要機能検証**<br>OTPを削除せず一時停止し、システム検証店舗限定の本番検証用ログインからOTP成功後と同等の `store_device_session` / HttpOnly Cookieを発行して、OTP以降のProduction経路（Private Storage, IndexedDB差分同期, 高画質ビューアー, 端末管理・一括ログアウト）を検証する | Phase 2 | **TODO** | TODO 1, 2 |
 
