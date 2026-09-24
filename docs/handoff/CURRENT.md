@@ -3,7 +3,7 @@
 > **Updated**: 2026-09-24  
 > **Actor**: Antigravity  
 > **Branch**: `migrate/vexum-canonical`  
-> **Preceding Commit**: `f12e1e4` (docs: stop hardcoding dynamic git HEAD in SSOT)  
+> **Preceding Commit**: `3884b63` (docs: revise production protection rule to obtain user permission and execute)  
 
 本書は、**次のAI / 開発者が作業を開始する直前に必ず確認する最新の引き継ぎメモ**です。
 
@@ -34,8 +34,12 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 4. **動的Git情報の分離方針の確立**:
    - コミットのたびに自己矛盾を招く「現在のHEAD SHA」のMarkdown内固定保存を廃止。
    - Git/GitHubを動的情報の正本とし、ドキュメントには継続的な運用方針のみを記載するルールを `AGENTS.md` へ追加。
-5. **Production保護ルールの運用方針改定**:
-   - `AGENTS.md` のProduction保護ルールを、「ユーザー自身に直接作業させるのではなく、AIエージェント側からユーザーへ事前に明示的な実行許可・指示を取り、許可を得た上でエージェントが責任を持って実行する」方針に改定。
+5. **ユーザー承認・説明責任ルール（Informed Approval）の制定**:
+   - `AGENTS.md` にセクション「4. ユーザー承認・説明責任ルール（Informed Approval）」を新設。
+   - ユーザーは開発・ITの前提知識はあるがインフラ・DB・認証等の専門家ではない前提に立ち、専門用語の平易な解説を義務化。
+   - 承認前に説明すべき9項目（内容、理由、現状、変化、不実施時の影響、想定リスク、切り戻し可否、非変更範囲、実行後確認）を定義。
+   - Production DB変更、deploy、merge等14の重要操作での明示的説明と納得に基づく承認を必須化。
+   - 承認範囲の厳守、不明点がある場合の事前調査・説明ルールを明文化。単なるYes/No取得の禁止。
 
 ---
 
