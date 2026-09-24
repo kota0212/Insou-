@@ -3,7 +3,7 @@
 > **Updated**: 2026-09-24  
 > **Actor**: Antigravity  
 > **Branch**: `migrate/vexum-canonical`  
-> **Preceding Commit**: `d78463e` (docs: revise completion phases and defer OTP until pre-pilot)  
+> **Preceding Commit**: `f12e1e4` (docs: stop hardcoding dynamic git HEAD in SSOT)  
 
 本書は、**次のAI / 開発者が作業を開始する直前に必ず確認する最新の引き継ぎメモ**です。
 
@@ -34,6 +34,8 @@ INSOUメニュー閲覧システムのリポジトリを、ChatGPT / Codex / Ant
 4. **動的Git情報の分離方針の確立**:
    - コミットのたびに自己矛盾を招く「現在のHEAD SHA」のMarkdown内固定保存を廃止。
    - Git/GitHubを動的情報の正本とし、ドキュメントには継続的な運用方針のみを記載するルールを `AGENTS.md` へ追加。
+5. **Production保護ルールの運用方針改定**:
+   - `AGENTS.md` のProduction保護ルールを、「ユーザー自身に直接作業させるのではなく、AIエージェント側からユーザーへ事前に明示的な実行許可・指示を取り、許可を得た上でエージェントが責任を持って実行する」方針に改定。
 
 ---
 
